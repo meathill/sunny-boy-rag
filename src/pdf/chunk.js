@@ -6,7 +6,7 @@ function hash(str) {
 
 export function chunkSections(sections, opts = {}) {
   const {
-    maxChars = 4000, minChars = 1500, overlap = 200, sourceId = 'unknown'
+    maxChars = 4000, minChars = 1500, sourceId = 'unknown'
   } = opts;
 
   const chunks = [];
@@ -46,8 +46,7 @@ export function chunkSections(sections, opts = {}) {
       });
 
       if (end === text.length) break;
-      i = end - overlap;
-      if (i < 0) i = 0;
+      i = end;
     }
 
   }

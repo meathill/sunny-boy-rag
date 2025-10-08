@@ -3,15 +3,15 @@ import assert from 'node:assert/strict';
 import {chunkSections} from '../src/pdf/chunk.js';
 
 describe('chunk', () => {
-  test('respects maxChars and overlap', () => {
+  test('respects maxChars without overlap', () => {
     const longText = 'x'.repeat(5000);
     const sections = [{
       id: 'sec:1', title: '总则', section: '1', startPage: 1, endPage: 3, text: longText
     }];
-    const chunks = chunkSections(sections, {maxChars: 2000, overlap: 100, sourceId: 'doc1'});
-    assert.ok(chunks.length >= 2);
+    const chunks = chunkSections(sections, {maxChars: 2000, sourceId: 'doc1'});
+    assert.equal(chunks.length, 2);
     assert.ok(chunks[0].text.length <= 2000);
-    assert.ok(chunks[1].text.startsWith('x'.repeat(100)));
+    assert.ok(chunks[1].text.length > 2000);
   });
 
   test('small section becomes single chunk', () => {

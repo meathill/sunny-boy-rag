@@ -7,7 +7,7 @@ import { chunkSections } from '../pdf/chunk.js';
 async function main() {
   const [, , cmdOrFile, ...rest] = process.argv;
   if (!cmdOrFile) {
-    console.error('Usage: ingest <file.pdf> [--max 4000] [--overlap 200] | ingest list [--source <file>] [--limit N] [--offset N] | ingest get <id>');
+    console.error('Usage: ingest <file.pdf> [--max 4000] | ingest list [--source <file>] [--limit N] [--offset N] | ingest get <id>');
     process.exit(1);
   }
   const args = new Map();

@@ -25,7 +25,7 @@ describe('ingest CLI', () => {
     const file = path.join(dir, 'doc.txt');
     await fs.writeFile(file, '1. 总则\n正文A\n1.1 范围\n正文B\n2. 定义\n正文C');
 
-    const {stdout} = await execNode(['src/cli/ingest.js', file, '--max', '100', '--overlap', '10']);
+    const {stdout} = await execNode(['src/cli/ingest.js', file, '--max', '100']);
     const out = JSON.parse(stdout);
     assert.equal(out.meta.pageCount, 1);
     assert.ok(Array.isArray(out.sections) && out.sections.length >= 1);

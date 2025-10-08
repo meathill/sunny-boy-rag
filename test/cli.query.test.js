@@ -31,7 +31,7 @@ describe('ingest CLI query', { skip: !hasDb }, () => {
     const dbPath = path.join(dir, 'data.sqlite');
     await fs.writeFile(file, '1. 总则\n正文A\n1.1 范围\n正文B\n2. 定义\n正文C');
 
-    await execNode(['src/cli/ingest.js', file, '--max', '200', '--overlap', '10', '--db', dbPath]);
+    await execNode(['src/cli/ingest.js', file, '--max', '200', '--db', dbPath]);
 
     const {stdout: lsOut} = await execNode(['src/cli/ingest.js', 'list', '--db', dbPath, '--source', file]);
     const rows = JSON.parse(lsOut);
