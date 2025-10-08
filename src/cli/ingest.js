@@ -9,7 +9,7 @@ import { chunkSections } from '../pdf/chunk.js';
 async function main() {
   const [, , cmdOrFile, ...rest] = process.argv;
   if (!cmdOrFile) {
-    console.error('Usage: ingest <file.pdf> [--max 4000] | ingest list [--source <file>] [--limit N] [--offset N] | ingest get <id>');
+    console.error('Usage: ingest <file.pdf> [--max 4000] | ingest list [--source <file>] [--limit N] [--offset N] | ingest get <id> | ingest status [--source <file>]');
     process.exit(1);
   }
   const args = new Map();
@@ -18,11 +18,18 @@ async function main() {
   }
 
   // Query subcommands
-  if (cmdOrFile === 'list' || cmdOrFile === 'get') {
+  if (cmdOrFile === 'list' || cmdOrFile === 'get' || cmdOrFile === 'status') {
     const dbPath = args.get('db') ?? process.env.SUNNY_SQLITE ?? ':memory:';
     try {
-      const { initDb, getChunk, getChunksBySource, getAllChunks } = await import('../db/sqlite.js');
+      const { initDb, getChunk, getChunksBySource, getAllChunks, getDocuments, getDocument } = await import('../db/sqlite.js');
       const db = initDb(dbPath);
+      if (cmdOrFile === 'status') {
+        const source = args.get('source');
+        const rows = source ? [getDocument(db, source)] : getDocuments(db, {limit: Number(args.get('limit') ?? 100), offset: Number(args.get('offset') ?? 0)});
+        process.stdout.write(JSON.stringify(rows.filter(Boolean), null, 2));
+        db.close?.();
+        return;
+      }
       if (cmdOrFile === 'get') {
         const id = rest.find(a => !String(a).startsWith('--'));
         if (!id) throw new Error('Missing id');
@@ -57,16 +64,18 @@ async function main() {
 
   // Write to DB if binding available; prefer provided path, else :memory:
   try {
-    const { initDb, saveChunks } = await import('../db/sqlite.js');
+    const { initDb, saveChunks, refreshDocument } = await import('../db/sqlite.js');
     const db = initDb(dbPath ?? ':memory:');
     saveChunks(db, chunks);
+    refreshDocument(db, file, { pageCount: meta.pageCount, processedPages: textByPage.length });
     db.close?.();
   } catch (e) {
     if (process.env.DEBUG) console.warn('DB disabled:', e.message);
   }
 
   const out = { meta, sections, chunks };
-  process.stdout.write(JSON.stringify(out, null, 2));
+  await fs.writeFile('ingest-output.json', JSON.stringify(out, null, 2), 'utf8');
+  process.stdout.write('done');
 }
 
 main().catch(err => {

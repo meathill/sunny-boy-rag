@@ -30,6 +30,8 @@
 - 列表：pnpm ingest list [--source <file>] [--limit N] [--offset N] [--db path]
   - 结合 SUNNY_SQLITE：直接执行 pnpm ingest list 即从默认数据库读取
 - 单条：pnpm ingest get <id> [--db path]
+- 总表：pnpm ingest status [--source <file>] [--limit N] [--offset N] [--db path]
+  - 输出每个源文件的 page_count / processed_pages / chunk_count 等，支持增量处理记录
 
 - 示例：
   - 列表（限制 3 条）：pnpm ingest list --limit 3

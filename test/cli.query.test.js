@@ -25,7 +25,7 @@ function execNode(args, opts={}) {
 }
 
 describe('ingest CLI query', { skip: !hasDb }, () => {
-  test('list and get work with sqlite file', async () => {
+  test('list/get/status work with sqlite file', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ingest-q-'));
     const file = path.join(dir, 'doc.txt');
     const dbPath = path.join(dir, 'data.sqlite');
@@ -41,5 +41,9 @@ describe('ingest CLI query', { skip: !hasDb }, () => {
     const {stdout: getOut} = await execNode(['src/cli/ingest.js', 'get', id, '--db', dbPath]);
     const row = JSON.parse(getOut);
     assert.equal(row.id, id);
+
+    const {stdout: stOut} = await execNode(['src/cli/ingest.js', 'status', '--db', dbPath]);
+    const docs = JSON.parse(stOut);
+    assert.ok(docs.some(d => d.source_id === file));
   });
 });
