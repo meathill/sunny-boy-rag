@@ -23,3 +23,16 @@ Sunny boy RAG
     所以数据可能需要多轮处理
 6. 开发 Web UI，提供简单的输入，然后生成 SQL，并检索结果
 7. 然后通过AI生成语义化结果
+
+构建与运行（步骤一：读取+分析+切片 PDF）
+---
+
+- 安装依赖：pnpm install
+- 运行测试：pnpm test
+- 对单个 PDF 执行读取/分析/切片并输出 JSON：
+  pnpm ingest path/to/file.pdf > output.json
+
+说明：
+- parsePdf 会自动识别输入是否为真实 PDF；若非 PDF（如纯文本），会按单页文本处理，便于测试与调试
+- buildSections 自动检测“1.”、“1.1”这类标题并按页聚合内容
+- chunkSections 按 max/overlap 切片，默认 4000/200；可通过 --max 与 --overlap 调整

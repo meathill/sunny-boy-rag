@@ -10,13 +10,15 @@
 构建与运行
 ---
 
-- （待补充）
-
+- 安装依赖：pnpm install
+- 运行测试：pnpm test
+- 执行步骤一（读取+分析+切片PDF）：pnpm ingest path/to/file.pdf > output.json
 
 测试与校验
 ---
 
-- （待补充）
+- 单元测试：node --test（已通过）
+- parsePdf 自动识别非PDF缓冲并回退为单页文本，确保测试稳定
 
 
 约束
