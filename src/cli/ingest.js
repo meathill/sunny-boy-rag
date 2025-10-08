@@ -45,14 +45,13 @@ async function main() {
   // Ingest mode
   const file = cmdOrFile;
   const max = Number(args.get('max') ?? 4000);
-  const overlap = Number(args.get('overlap') ?? 200);
   const pages = args.has('pages') ? Number(args.get('pages')) : undefined;
   const dbPath = args.get('db') ?? process.env.SUNNY_SQLITE; // if undefined, try in-memory when binding available
 
   const buf = await fs.readFile(file);
   const { meta, textByPage } = await parsePdf(buf, { maxPages: pages });
   const sections = buildSections(textByPage);
-  const chunks = chunkSections(sections, { maxChars: max, overlap, sourceId: file });
+  const chunks = chunkSections(sections, { maxChars: max, sourceId: file });
 
   // Write to DB if binding available; prefer provided path, else :memory:
   try {
