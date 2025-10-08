@@ -21,6 +21,7 @@
   - DB 写入：
     - 环境变量 SUNNY_SQLITE 指定 sqlite 文件路径；若未设置且未传 --db，则使用内存数据库
     - CLI 优先顺序：--db > SUNNY_SQLITE > :memory:
+    - 支持 .env（使用 dotenv），命令行会自动加载 .env 中的环境变量
 
 - 示例：
   pnpm ingest "assets/V06_Particular Specifications_P03 26 24 13 26 25 13.pdf" --pages 3 --max 800 > out.json

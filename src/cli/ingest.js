@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs/promises';
+import 'dotenv/config';
+
 import { parsePdf } from '../pdf/extract.js';
 import { buildSections } from '../pdf/analyze.js';
 import { chunkSections } from '../pdf/chunk.js';

@@ -18,13 +18,14 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.4.1",
+    "dotenv": "^17.2.3",
     "pdfjs-dist": "^5.4.296"
   },
   "pnpm": {
     "allowedBuiltDependencies": [
       "better-sqlite3"
     ],
-    "ignoredBuiltDependencies": [
+    "onlyBuiltDependencies": [
       "better-sqlite3"
     ]
   }
