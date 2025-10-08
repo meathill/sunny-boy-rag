@@ -1,6 +1,6 @@
 export function detectHeadings(textByPage) {
   const headings = [];
-  const headingRe = /^\s*(\d+(?:.\d+){0,3})[.)]?\s+(.{3,80})$/;
+  const headingRe = /^\s*(\d+(?:\.\d+){0,3})[.)]?\s+(.{2,80})$/;
   textByPage.forEach((pageText, pageIndex) => {
     const lines = pageText.split(/\r?\n/);
     for (let i = 0; i < lines.length; i++) {
@@ -18,8 +18,9 @@ export function detectHeadings(textByPage) {
 export function extractReferences(text) {
   const refs = [];
   const re = /\b([A-Z]{2,}-\d{2,}|[A-Z]{2,}\d{2,}|[A-Z]{2,}-\d{3,}[A-Z]?)\b/g;
+  const norm = text.replace(/\s*-\s*/g, '-');
   let m;
-  while ((m = re.exec(text)) !== null) {
+  while ((m = re.exec(norm)) !== null) {
     refs.push({match: m[0], index: m.index});
   }
   return refs;
@@ -53,6 +54,7 @@ export function buildSections(textByPage) {
     const text = textByPage.slice(startPage - 1, endPage).join('\n');
     sections.push({
       id: `sec: ${h.section}, ${h.title}`,
+      title: h.title,
       section: h.section,
       startPage,
       endPage,
