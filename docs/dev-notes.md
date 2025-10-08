@@ -8,12 +8,14 @@
 - 分段构建：buildSections 数字序排序；段 id 模板 `sec: ${section}, ${title}`；无标题时添加 `sec:document`。
 - 引用提取：先将连字符两侧空格规整为 `-`，再用模式 `[A-Z]{2,}-\d{2,}|[A-Z]{2,}\d{2,}|[A-Z]{2,}-\d{3,}[A-Z]?`。
 - 切片：chunkSections 默认 maxChars=4000, minChars=1500, overlap=200；末尾过小切片会并入前一块；chunk.id 使用 sha1 截断。
-- CLI：`src/cli/ingest.js` 将 parsePdf + buildSections + chunkSections 串联，输出 {meta,sections,chunks} 到 stdout；参数：--max, --overlap, --pages。
+- CLI：`src/cli/ingest.js` 将 parsePdf + buildSections + chunkSections 串联，输出 {meta,sections,chunks} 到 stdout；参数：--max, --overlap, --pages, --db；并从环境变量 SUNNY_SQLITE 读取数据库文件路径（覆盖顺序：--db > SUNNY_SQLITE > :memory:）。
+- DB API：getChunk(db, id), getChunksBySource(db, sourceId, {limit, offset}).
 
 ## 测试策略
 - 使用 Node test（node --test）。
 - 单元测试：analyze、chunk、pipeline、ingest 文本输入。
 - e2e：assets 中真实 PDF，仅解析前 3 页控制耗时；断言输出结构有效。
+- DB 测试：依赖 better-sqlite3 原生绑定；若绑定不可用则自动跳过（CI/本地差异）。
 
 ## 代码风格与运行环境
 - JS/TS，缩进 2 空格；严格 ESLint（后续补充配置）。

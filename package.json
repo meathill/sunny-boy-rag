@@ -17,6 +17,15 @@
     "node": ">= 22.20.0"
   },
   "dependencies": {
+    "better-sqlite3": "^12.4.1",
     "pdfjs-dist": "^5.4.296"
+  },
+  "pnpm": {
+    "allowedBuiltDependencies": [
+      "better-sqlite3"
+    ],
+    "ignoredBuiltDependencies": [
+      "better-sqlite3"
+    ]
   }
 }
