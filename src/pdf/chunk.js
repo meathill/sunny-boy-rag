@@ -16,8 +16,10 @@ export function chunkSections(sections, opts = {}) {
       chunks.push({
         id: `ch: ${hash(`${sourceId}:${sec.id}:${text.slice(0, 64)}`)}`,
         sourceId,
-        sectionId: sec.id,
+        sectionId: sec.sectionId ?? sec.id,
         partNo: sec.partNo,
+        level2Code: sec.level2Code ?? null,
+        level3Code: sec.level3Code ?? null,
         title: sec.title,
         startPage: sec.startPage,
         endPage: sec.endPage,
@@ -39,8 +41,10 @@ export function chunkSections(sections, opts = {}) {
       chunks.push({
         id: `ch:${hash(`${sourceId}:${sec.id}:${i}`)}`,
         sourceId,
-        sectionId: sec.id,
+        sectionId: sec.sectionId ?? sec.id,
         partNo: sec.partNo,
+        level2Code: sec.level2Code ?? null,
+        level3Code: sec.level3Code ?? null,
         title: sec.title,
         startPage: sec.startPage,
         endPage: sec.endPage,

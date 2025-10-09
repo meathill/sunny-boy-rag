@@ -20,15 +20,16 @@ describe('ingest CLI', () => {
     assert.match(stderr, /Usage: ingest/);
   });
 
-  test('processes a text file and outputs JSON', async () => {
+  test('processes a text file and writes last-ingest.json', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ingest-'));
     const file = path.join(dir, 'doc.txt');
     await fs.writeFile(file, '1. 总则\n正文A\n1.1 范围\n正文B\n2. 定义\n正文C');
 
     const {stdout} = await execNode(['src/cli/ingest.js', file, '--max', '100']);
-    const out = JSON.parse(stdout);
-    assert.equal(out.meta.pageCount, 1);
-    assert.ok(Array.isArray(out.sections) && out.sections.length >= 1);
-    assert.ok(Array.isArray(out.chunks) && out.chunks.length >= 1);
+    assert.equal(stdout.trim(), 'done');
+    const saved = JSON.parse(await fs.readFile('last-ingest.json', 'utf8'));
+    assert.equal(saved.meta.pageCount, 1);
+    assert.ok(Array.isArray(saved.sections) && saved.sections.length >= 1);
+    assert.ok(Array.isArray(saved.chunks) && saved.chunks.length >= 1);
   });
 });

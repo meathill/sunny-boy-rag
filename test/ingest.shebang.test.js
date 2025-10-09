@@ -29,7 +29,8 @@ describe('ingest shebang', { skip: !hasDb }, () => {
     await fs.writeFile(file, '1. 总则\n正文A\n1.1 范围\n正文B\n2. 定义\n正文C');
 
     const {stdout} = await execBin('./src/cli/ingest.js', [file, '--max', '200'], { env: { ...process.env, SUNNY_SQLITE: dbPath } });
-    const out = JSON.parse(stdout);
+    assert.equal(stdout.trim(), 'done');
+    const out = JSON.parse(await fs.readFile('last-ingest.json', 'utf8'));
     assert.ok(out.chunks.length >= 1);
 
     const { default: Database } = await import('better-sqlite3');

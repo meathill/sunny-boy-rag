@@ -9,10 +9,10 @@ export function detectHeadings(textByPage) {
         headings.push({ page: pageIndex + 1, line: i + 1, section: m[1], title: m[2].trim() });
         continue;
       }
-      const m2 = lines[i].match(/^\s*Section\s+(\d+)(?:\s+(\d+))(?:\s+(\d+))?\s*$/i);
+      const m2 = lines[i].match(/^\s*Section\s+(\d+)\s+(\d+)(?:\s+(\d+))?\s*$/i);
       if (m2) {
         const title = (lines[i+1] || '').trim();
-        const code = [m2[1], m2[2], m2[3]].filter(Boolean).join('.');
+        const code = [m2[1], m2[2], m2[3]].filter(Boolean).join(' ');
         headings.push({ page: pageIndex + 1, line: i + 1, section: code, title });
       }
     }
@@ -84,7 +84,7 @@ export function buildSections(textByPage) {
 }
 export function buildParts(sections) {
   const parts = [];
-  const partRe = /^\s*PART\s+(1|2|3)\s*[-–]\s*(GENERAL|PRODUCT|EXECUTION)?\s*$/i;
+  const partRe = /^\s*PART\s+([123])\s*[-–]\s*(GENERAL|PRODUCT|EXECUTION)?\s*$/i;
   const defaultTitles = { 1: 'GENERAL', 2: 'PRODUCT', 3: 'EXECUTION' };
   for (const sec of sections) {
     const lines = sec.text.split(/\r?\n/);
@@ -107,3 +107,57 @@ export function buildParts(sections) {
   return parts;
 }
 
+export function buildSubsections(parts) {
+  const items = [];
+  const re = /^\s*(\d{1,2}(?:\.\d{1,2}){0,2})\b\s*(.*)$/;
+  for (const p of parts) {
+    const lines = p.text.split(/\r?\n/);
+    const marks = [];
+    for (let i = 0; i < lines.length; i++) {
+      const m = lines[i].match(re);
+      if (m) marks.push({ index: i, code: m[1], title: (m[2]||'').trim() });
+    }
+    if (marks.length === 0) {
+      items.push({ ...p, partNo: p.partNo, sectionLocal: null, level2Code: null, level3Code: null });
+      continue;
+    }
+    for (let i = 0; i < marks.length; i++) {
+      const cur = marks[i];
+      const next = marks[i+1];
+      const slice = lines.slice(cur.index + 1, next ? next.index : lines.length).join('\n').trim();
+      const seg = { sectionId: p.sectionId, partNo: p.partNo, title: p.title, startPage: p.startPage, endPage: p.endPage, text: slice };
+      const partsCode = cur.code.split('.');
+      seg.level2Code = partsCode.length >= 2 ? partsCode.slice(0,2).join('.') : null;
+      seg.level3Code = partsCode.length >= 3 ? partsCode.slice(0,3).join('.') : null;
+      items.push(seg);
+    }
+  }
+  return items;
+}
+
+export function enrichSectionsForDb(sections) {
+  // naive extraction for placeholders from Part 1 text; keep raw text
+  return sections.map(s => ({
+    ...s,
+    overview: s.text || null,
+    p14: null,
+    p15: null,
+    p17: null,
+    p18: null,
+  }));
+}
+
+export function buildSectionRelations(sections) {
+  const rels = [];
+  const re = /\bSection\s+(\d+)\s+(\d+)\s+(\d+)\b/gi;
+  const codeToId = new Map(sections.map(s => [s.section, s.id]));
+  for (const s of sections) {
+    let m;
+    while ((m = re.exec(s.text)) !== null) {
+      const code = `${m[1]} ${m[2]} ${m[3]}`;
+      const target = codeToId.get(code);
+      if (target && target !== s.id) rels.push({ sectionId: s.id, relatedSectionId: target });
+    }
+  }
+  return rels;
+}

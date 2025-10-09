@@ -11,9 +11,14 @@ export function initDb(path = DEFAULT_PATH) {
       section_code TEXT,
       title TEXT,
       start_page INTEGER,
-      end_page INTEGER
+      end_page INTEGER,
+      overview TEXT,
+      p14 TEXT,
+      p15 TEXT,
+      p17 TEXT,
+      p18 TEXT,
+      UNIQUE(source_id, section_code)
     );
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_sections_src_code ON sections(source_id, section_code);
 
     CREATE TABLE IF NOT EXISTS parts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,6 +34,8 @@ export function initDb(path = DEFAULT_PATH) {
       source_id TEXT NOT NULL,
       section_id TEXT,
       part_no INTEGER,
+      level2_code TEXT,
+      level3_code TEXT,
       title TEXT,
       start_page INTEGER,
       end_page INTEGER,
@@ -44,18 +51,69 @@ export function initDb(path = DEFAULT_PATH) {
       updated_at TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS std_refs (
+      id TEXT PRIMARY KEY,
+      title TEXT,
+      raw TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS section_std_refs_relations (
+      section_id TEXT NOT NULL,
+      reference_id TEXT NOT NULL,
+      PRIMARY KEY(section_id, reference_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS definitions (
+      id TEXT PRIMARY KEY,
+      term TEXT,
+      raw TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS section_relations (
+      section_id TEXT NOT NULL,
+      related_section_id TEXT NOT NULL,
+      PRIMARY KEY(section_id, related_section_id)
+    );
+
+
+    -- re-open documents closing bracket lost earlier
+    CREATE TABLE IF NOT EXISTS documents (
+      source_id TEXT PRIMARY KEY,
+      page_count INTEGER,
+      processed_pages INTEGER DEFAULT 0,
+      chunk_count INTEGER DEFAULT 0,
+      updated_at TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+
+    CREATE TABLE IF NOT EXISTS section_definition_relations (
+      section_id TEXT NOT NULL,
+      definition_id TEXT NOT NULL,
+      PRIMARY KEY(section_id, definition_id)
+    );
+
+      page_count INTEGER,
+      processed_pages INTEGER DEFAULT 0,
+      chunk_count INTEGER DEFAULT 0,
+      updated_at TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
   return db;
 }
 
 export function saveChunks(db, chunks) {
   const stmt = db.prepare(`
-    INSERT INTO chunks (id, source_id, section_id, part_no, title, start_page, end_page, text)
-    VALUES (@id, @sourceId, @sectionId, @partNo, @title, @startPage, @endPage, @text)
+    INSERT INTO chunks (id, source_id, section_id, part_no, level2_code, level3_code, title, start_page, end_page, text)
+    VALUES (@id, @sourceId, @sectionId, @partNo, @level2Code, @level3Code, @title, @startPage, @endPage, @text)
     ON CONFLICT(id) DO UPDATE SET
       source_id = excluded.source_id,
       section_id = excluded.section_id,
       part_no = excluded.part_no,
+      level2_code = excluded.level2_code,
+      level3_code = excluded.level3_code,
       title = excluded.title,
       start_page = excluded.start_page,
       end_page = excluded.end_page,
@@ -67,14 +125,17 @@ export function saveChunks(db, chunks) {
 
 export function saveSections(db, sourceId, sections) {
   const stmt = db.prepare(`
-    INSERT INTO sections (id, source_id, section_code, title, start_page, end_page)
-    VALUES (@id, @sourceId, @section, @title, @startPage, @endPage)
-    ON CONFLICT(id) DO UPDATE SET
-      source_id = excluded.source_id,
-      section_code = excluded.section_code,
+    INSERT INTO sections (id, source_id, section_code, title, start_page, end_page, overview, p14, p15, p17, p18)
+    VALUES (@id, @sourceId, @section, @title, @startPage, @endPage, @overview, @p14, @p15, @p17, @p18)
+    ON CONFLICT(source_id, section_code) DO UPDATE SET
       title = excluded.title,
       start_page = excluded.start_page,
-      end_page = excluded.end_page
+      end_page = excluded.end_page,
+      overview = excluded.overview,
+      p14 = excluded.p14,
+      p15 = excluded.p15,
+      p17 = excluded.p17,
+      p18 = excluded.p18
   `);
   const withSrc = sections.map(s => ({ ...s, sourceId }));
   const tx = db.transaction((rows) => { for (const r of rows) stmt.run(r); });
@@ -106,6 +167,16 @@ export function refreshDocument(db, sourceId, { pageCount = null, processedPages
       chunk_count = excluded.chunk_count,
       updated_at = excluded.updated_at
   `).run(sourceId, pageCount, processedPages, total, now);
+}
+
+export function saveSectionRelations(db, relations) {
+  const stmt = db.prepare(`
+    INSERT INTO section_relations (section_id, related_section_id)
+    VALUES (@sectionId, @relatedSectionId)
+    ON CONFLICT(section_id, related_section_id) DO NOTHING
+  `);
+  const tx = db.transaction((rows) => { for (const r of rows) stmt.run(r); });
+  tx(relations);
 }
 
 export function saveParts(db, sourceId, parts) {

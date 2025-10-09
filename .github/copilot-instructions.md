@@ -52,8 +52,42 @@ PDF 信息结构
             专用规范，即只有某些特定产品需要遵守。
         - Part 3: Execution 包含测试、包装、仓储、交付、培训等规范。
 
-基于以上这些信息结构，我们需要重新设计数据库架构，以便更好的存储和查询信息。      
+基于以上这些信息结构，我们需要重新设计数据库架构，以便更好的存储和查询信息。
 
+- section 表
+    - 记录 Section 的 ID（即上面说的 `X Y Z`、标题、起始页码、结束页码
+    - 主要从 Part 1 里提取
+    - 记录 overview
+    - 记录 1.4，1.5，1.7，1.8 里的主要内容
+- section_relations 表
+    - 记录 Section 之间的关系，N:N 关系
+    - 记录涉及到的 Section ID 和 Related Section ID
+    - 这个部分文本结构比较简单，可以直接用正则来做
+    - 需要对 section_id 和 related_section_id 做联合唯一索引
+- std_refs 表
+    - 从 Section 的 1.3 References 提取，存储各种技术规范
+    - 以技术规范的 ID 作为主键，比如 `BS 7671`
+    - 此表格在拆分阶段仅构建，内容填充放到下一步AI解析再处理
+- section_std_refs_relations 表
+    - 关联 section 和 std_refs，N:N 关系
+    - 记录涉及到的 Section ID 和 Reference ID
+    - 此表格在拆分阶段仅构建，内容填充放到下一步AI解析再处理
+- definitions
+    - 从 Section 的 1.6 Definitions 提取，存储各种术语缩写
+    - 以术语缩写作为主键，比如 `PVC`
+    - 也可能名为 Acronyms / Abbreviations
+    - 此表格在拆分阶段仅构建，内容填充放到下一步AI解析再处理
+- section_definition_relations 表
+    - 关联 section 和 definitions，N:N 关系
+    - 记录涉及到的 Section ID 和 Definition ID
+    - 此表格在拆分阶段仅构建，内容填充放到下一步AI解析再处理
+- chunks 表
+    - 相对来说，此文本的 section 结构比较固定（如上所述），但是内容提取仍然不太容易用
+        一套简单的代码实现，所以还是应该交给LLM（AI）来处理
+    - 所以在切片拆分这一步，我们只做到把PDF内容按照前面设计的数据结构拆分成 chunks，
+        并存储到数据库，下一步再使用 AI 将具体内容解析到表中
+    - 记录 Section ID，Part 1/2/3，二级ID（`X.Y`），3级ID（`X.Y.Z`），起始页码，结束页码
+    - 我人工翻阅了目标PDF，拆分到3级ID应该足够了
 
 输出期望
 ---

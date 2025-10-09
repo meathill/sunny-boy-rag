@@ -10,7 +10,7 @@
 - 切片：chunkSections 默认 maxChars=4000, minChars=1500（无重叠）；末尾过小切片会并入前一块；chunk.id 使用 sha1 截断。按章节/段落为主进行切分。
 - CLI：`src/cli/ingest.js` 将 parsePdf + buildSections + chunkSections 串联，输出 {meta,sections,chunks} 到 stdout；参数：--max, --pages, --db；环境变量通过 dotenv 自动加载（.env），数据库路径覆盖顺序：--db > SUNNY_SQLITE > :memory:。
 - DB API：saveSections(db, sourceId, sections), getChunk(db, id), getChunksBySource(db, sourceId, {limit, offset}), getDocuments(db), getDocument(db, sourceId), refreshDocument(db, sourceId, {pageCount, processedPages}).
-- Schema：sections(section_code/title/start_page/end_page/source_id)、parts(section_id,part_no,title)、chunks(section_id 关联分段)、documents(汇总)。
+- Schema：sections(section_code/title/start_page/end_page/source_id, overview, related_sections, p14, p15, p17, p18)、parts(section_id,part_no,title)、chunks(section_id, part_no, level2_code, level3_code, text)、documents(汇总)、references、section_reference、definitions、section_definition（拆分阶段仅建表）。
 
 ## 测试策略
 - 使用 Node test（node --test）。
