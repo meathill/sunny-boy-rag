@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import 'dotenv/config';
 
 import { parsePdf } from '../pdf/extract.js';
-import { buildSections } from '../pdf/analyze.js';
+import { buildSections, buildParts } from '../pdf/analyze.js';
 import { chunkSections } from '../pdf/chunk.js';
 
 async function main() {
@@ -60,12 +60,15 @@ async function main() {
   const buf = await fs.readFile(file);
   const { meta, textByPage } = await parsePdf(buf, { maxPages: pages });
   const sections = buildSections(textByPage);
-  const chunks = chunkSections(sections, { maxChars: max, sourceId: file });
+  const parts = buildParts(sections);
+  const chunks = chunkSections(parts, { maxChars: max, sourceId: file });
 
   // Write to DB if binding available; prefer provided path, else :memory:
   try {
-    const { initDb, saveChunks, refreshDocument } = await import('../db/sqlite.js');
+    const { initDb, saveSections, saveParts, saveChunks, refreshDocument } = await import('../db/sqlite.js');
     const db = initDb(dbPath ?? ':memory:');
+    saveSections(db, file, sections);
+    saveParts(db, file, parts);
     saveChunks(db, chunks);
     refreshDocument(db, file, { pageCount: meta.pageCount, processedPages: textByPage.length });
     db.close?.();
@@ -74,8 +77,8 @@ async function main() {
   }
 
   const out = { meta, sections, chunks };
-  await fs.writeFile('ingest-output.json', JSON.stringify(out, null, 2), 'utf8');
-  process.stdout.write('done');
+  process.stdout.write(JSON.stringify(out, null, 2));
+
 }
 
 main().catch(err => {

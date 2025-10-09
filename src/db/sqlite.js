@@ -5,10 +5,30 @@ export function initDb(path = DEFAULT_PATH) {
   const db = new Database(path);
   db.pragma('journal_mode = WAL');
   db.exec(`
+    CREATE TABLE IF NOT EXISTS sections (
+      id TEXT PRIMARY KEY,
+      source_id TEXT NOT NULL,
+      section_code TEXT,
+      title TEXT,
+      start_page INTEGER,
+      end_page INTEGER
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sections_src_code ON sections(source_id, section_code);
+
+    CREATE TABLE IF NOT EXISTS parts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_id TEXT NOT NULL,
+      section_id TEXT,
+      part_no INTEGER,
+      title TEXT,
+      UNIQUE(section_id, part_no)
+    );
+
     CREATE TABLE IF NOT EXISTS chunks (
       id TEXT PRIMARY KEY,
       source_id TEXT NOT NULL,
       section_id TEXT,
+      part_no INTEGER,
       title TEXT,
       start_page INTEGER,
       end_page INTEGER,
@@ -30,34 +50,49 @@ export function initDb(path = DEFAULT_PATH) {
 
 export function saveChunks(db, chunks) {
   const stmt = db.prepare(`
-    INSERT INTO chunks (id, source_id, section_id, title, start_page, end_page, text)
-    VALUES (@id, @sourceId, @sectionId, @title, @startPage, @endPage, @text)
+    INSERT INTO chunks (id, source_id, section_id, part_no, title, start_page, end_page, text)
+    VALUES (@id, @sourceId, @sectionId, @partNo, @title, @startPage, @endPage, @text)
     ON CONFLICT(id) DO UPDATE SET
       source_id = excluded.source_id,
       section_id = excluded.section_id,
+      part_no = excluded.part_no,
       title = excluded.title,
       start_page = excluded.start_page,
       end_page = excluded.end_page,
       text = excluded.text
   `);
-  const tx = db.transaction((rows) => {
-    for (const r of rows) stmt.run(r);
-  });
+  const tx = db.transaction((rows) => { for (const r of rows) stmt.run({ ...r, partNo: r.partNo ?? null }); });
   tx(chunks);
 }
+
+export function saveSections(db, sourceId, sections) {
+  const stmt = db.prepare(`
+    INSERT INTO sections (id, source_id, section_code, title, start_page, end_page)
+    VALUES (@id, @sourceId, @section, @title, @startPage, @endPage)
+    ON CONFLICT(id) DO UPDATE SET
+      source_id = excluded.source_id,
+      section_code = excluded.section_code,
+      title = excluded.title,
+      start_page = excluded.start_page,
+      end_page = excluded.end_page
+  `);
+  const withSrc = sections.map(s => ({ ...s, sourceId }));
+  const tx = db.transaction((rows) => { for (const r of rows) stmt.run(r); });
+  tx(withSrc);
+}
+
 
 export function getChunk(db, id) {
   return db.prepare('SELECT * FROM chunks WHERE id = ?').get(id);
 }
 
-export function getChunksBySource(db, sourceId, {limit = 1000, offset = 0} = {}) {
+export function getChunksBySource(db, sourceId, { limit = 1000, offset = 0 } = {}) {
   return db.prepare('SELECT * FROM chunks WHERE source_id = ? LIMIT ? OFFSET ?').all(sourceId, limit, offset);
 }
 
-export function getAllChunks(db, {limit = 1000, offset = 0} = {}) {
+export function getAllChunks(db, { limit = 1000, offset = 0 } = {}) {
   return db.prepare('SELECT * FROM chunks LIMIT ? OFFSET ?').all(limit, offset);
 }
-
 
 export function refreshDocument(db, sourceId, { pageCount = null, processedPages = 0 } = {}) {
   const now = new Date().toISOString();
@@ -73,7 +108,19 @@ export function refreshDocument(db, sourceId, { pageCount = null, processedPages
   `).run(sourceId, pageCount, processedPages, total, now);
 }
 
-export function getDocuments(db, {limit = 100, offset = 0} = {}) {
+export function saveParts(db, sourceId, parts) {
+  const stmt = db.prepare(`
+    INSERT INTO parts (source_id, section_id, part_no, title)
+    VALUES (@sourceId, @sectionId, @partNo, @title)
+    ON CONFLICT(section_id, part_no) DO UPDATE SET
+      title = excluded.title
+  `);
+  const withSrc = parts.map(p => ({ ...p, sourceId }));
+  const tx = db.transaction((rows) => { for (const r of rows) stmt.run(r); });
+  tx(withSrc);
+}
+
+export function getDocuments(db, { limit = 100, offset = 0 } = {}) {
   return db.prepare('SELECT * FROM documents ORDER BY updated_at DESC LIMIT ? OFFSET ?').all(limit, offset);
 }
 

@@ -4,3 +4,6 @@ node_modules
 assets/*.pdf
 *.sqlite
 data.*
+.DS_Store
+*-output.json
+tmp

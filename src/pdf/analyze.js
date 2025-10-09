@@ -6,9 +6,14 @@ export function detectHeadings(textByPage) {
     for (let i = 0; i < lines.length; i++) {
       const m = lines[i].match(headingRe);
       if (m) {
-        headings.push({
-          page: pageIndex + 1, line: i + 1, section: m[1], title: m[2].trim()
-        });
+        headings.push({ page: pageIndex + 1, line: i + 1, section: m[1], title: m[2].trim() });
+        continue;
+      }
+      const m2 = lines[i].match(/^\s*Section\s+(\d+)(?:\s+(\d+))(?:\s+(\d+))?\s*$/i);
+      if (m2) {
+        const title = (lines[i+1] || '').trim();
+        const code = [m2[1], m2[2], m2[3]].filter(Boolean).join('.');
+        headings.push({ page: pageIndex + 1, line: i + 1, section: code, title });
       }
     }
   });
@@ -51,7 +56,10 @@ export function buildSections(textByPage) {
     const next = sorted[i + 1];
     const startPage = h.page;
     const endPage = next ? Math.max(startPage, next.page) : textByPage.length;
-    const text = textByPage.slice(startPage - 1, endPage).join('\n');
+    let text = textByPage.slice(startPage - 1, endPage).join('\n');
+    // Trim trailing content at END OF SECTION ... marker if present
+    const eos = /\n?\s*END OF SECTION\b[\s\S]*$/i;
+    text = text.replace(eos, '').trimEnd();
     sections.push({
       id: `sec: ${h.section}, ${h.title}`,
       title: h.title,
@@ -74,3 +82,28 @@ export function buildSections(textByPage) {
   }
   return sections;
 }
+export function buildParts(sections) {
+  const parts = [];
+  const partRe = /^\s*PART\s+(1|2|3)\s*[-–]\s*(GENERAL|PRODUCT|EXECUTION)?\s*$/i;
+  const defaultTitles = { 1: 'GENERAL', 2: 'PRODUCT', 3: 'EXECUTION' };
+  for (const sec of sections) {
+    const lines = sec.text.split(/\r?\n/);
+    const marks = [];
+    for (let i = 0; i < lines.length; i++) {
+      const m = lines[i].match(partRe);
+      if (m) marks.push({ index: i, no: Number(m[1]), title: (m[2] || defaultTitles[Number(m[1])]) });
+    }
+    if (marks.length === 0) {
+      parts.push({ sectionId: sec.id, partNo: 1, title: defaultTitles[1], startPage: sec.startPage, endPage: sec.endPage, text: sec.text });
+      continue;
+    }
+    for (let i = 0; i < marks.length; i++) {
+      const cur = marks[i];
+      const next = marks[i + 1];
+      const slice = lines.slice(cur.index + 1, next ? next.index : lines.length).join('\n').trim();
+      parts.push({ sectionId: sec.id, partNo: cur.no, title: cur.title, startPage: sec.startPage, endPage: sec.endPage, text: slice });
+    }
+  }
+  return parts;
+}
+
