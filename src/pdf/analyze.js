@@ -1,19 +1,22 @@
 export function detectHeadings(textByPage) {
   const headings = [];
-  const headingRe = /^\s*(\d+(?:\.\d+){0,3})[.)]?\s+(.{2,80})$/;
+  const numberedRe = /^\s*(\d+(?:\.\d+){0,3})[.)]?\s+(.{2,80})$/;
+  const sectionRe = /^\s*Section\s+(\d+)\s+(\d+)(?:\s+(\d+))?\s*(?:[-–]\s*(.+))?\s*$/i;
   textByPage.forEach((pageText, pageIndex) => {
     const lines = pageText.split(/\r?\n/);
     for (let i = 0; i < lines.length; i++) {
-      const m = lines[i].match(headingRe);
-      if (m) {
-        headings.push({ page: pageIndex + 1, line: i + 1, section: m[1], title: m[2].trim() });
+      const m2 = lines[i].match(sectionRe);
+      if (m2) {
+        const inlineTitle = (m2[4] || '').trim();
+        const fallbackTitle = (lines[i+1] || '').trim();
+        const title = inlineTitle || fallbackTitle;
+        const code = [m2[1], m2[2], m2[3]].filter(Boolean).join(' ');
+        headings.push({ kind: 'section', page: pageIndex + 1, line: i + 1, section: code, title });
         continue;
       }
-      const m2 = lines[i].match(/^\s*Section\s+(\d+)\s+(\d+)(?:\s+(\d+))?\s*$/i);
-      if (m2) {
-        const title = (lines[i+1] || '').trim();
-        const code = [m2[1], m2[2], m2[3]].filter(Boolean).join(' ');
-        headings.push({ page: pageIndex + 1, line: i + 1, section: code, title });
+      const m = lines[i].match(numberedRe);
+      if (m) {
+        headings.push({ kind: 'numbered', page: pageIndex + 1, line: i + 1, section: m[1], title: m[2].trim() });
       }
     }
   });
@@ -35,33 +38,32 @@ export function buildSections(textByPage) {
   const headings = detectHeadings(textByPage);
   const sections = [];
 
-  function sectionSortKey(s) {
-    return s.section.split('.').map(n => Number(n));
-  }
-
-  const sorted = [...headings].sort((a, b) => {
-    const A = sectionSortKey(a);
-    const B = sectionSortKey(b);
-    const len = Math.max(A.length, B.length);
-    for (let i = 0; i < len; i++) {
-      const ai = A[i] ?? 0;
-      const bi = B[i] ?? 0;
-      if (ai !== bi) return ai - bi;
-    }
-    return 0;
-  });
+  const sectionHeadings = headings.filter(h => h.kind === 'section');
+  const list = sectionHeadings.length ? sectionHeadings : headings.filter(h => h.kind === 'numbered');
+  const sorted = [...list].sort((a, b) => a.page - b.page || a.line - b.line);
 
   for (let i = 0; i < sorted.length; i++) {
     const h = sorted[i];
     const next = sorted[i + 1];
     const startPage = h.page;
     const endPage = next ? Math.max(startPage, next.page) : textByPage.length;
-    let text = textByPage.slice(startPage - 1, endPage).join('\n');
+
+    const parts = [];
+    for (let p = startPage; p <= endPage; p++) {
+      const lines = (textByPage[p - 1] || '').split(/\r?\n/);
+      let from = 0;
+      let to = lines.length;
+      if (p === startPage) from = Math.max(0, (h.line || 1) - 1);
+      if (next && p === next.page) to = Math.max(0, (next.line || 1) - 1);
+      if (from < to) parts.push(lines.slice(from, to).join('\n'));
+    }
+    let text = parts.join('\n');
     // Trim trailing content at END OF SECTION ... marker if present
     const eos = /\n?\s*END OF SECTION\b[\s\S]*$/i;
     text = text.replace(eos, '').trimEnd();
+
     sections.push({
-      id: `sec: ${h.section}, ${h.title}`,
+      id: h.section, // use literal section code 'X Y Z'
       title: h.title,
       section: h.section,
       startPage,
@@ -84,7 +86,7 @@ export function buildSections(textByPage) {
 }
 export function buildParts(sections) {
   const parts = [];
-  const partRe = /^\s*PART\s+([123])\s*[-–]\s*(GENERAL|PRODUCT|EXECUTION)?\s*$/i;
+  const partRe = /^\s*PART\s+([123])\.?\s*(?:[-–]\s*)?(GENERAL|PRODUCT|EXECUTION)?\s*$/i;
   const defaultTitles = { 1: 'GENERAL', 2: 'PRODUCT', 3: 'EXECUTION' };
   for (const sec of sections) {
     const lines = sec.text.split(/\r?\n/);
@@ -135,28 +137,78 @@ export function buildSubsections(parts) {
   return items;
 }
 
-export function enrichSectionsForDb(sections) {
-  // naive extraction for placeholders from Part 1 text; keep raw text
+export function enrichSectionsForDb(sections, parts) {
+  function sliceBy(startCode, endCode) {
+    const reStart = new RegExp('^\\s*' + startCode.replace('.', '\\s*\\.\\s*') + '(?!\\d)\\b', 'm');
+    const reEnd = endCode ? new RegExp('^\\s*' + endCode.replace('.', '\\s*\\.\\s*') + '(?!\\d)\\b', 'm') : null;
+    return (txt) => {
+      const s = txt || '';
+      const ms = s.match(reStart);
+      if (!ms || ms.index === undefined) return null;
+      const start = ms.index;
+      let end = s.length;
+      if (reEnd) {
+        const me = s.slice(start + 1).match(reEnd);
+        if (me && me.index !== undefined) end = start + 1 + me.index;
+      }
+      return s.slice(start, end).trimEnd();
+    };
+  }
+
+  const pMap = new Map();
+  const re12 = /^\s*1\s*\.\s*2(?!\d)(?:\s*[\.\-–])?\s+/m;
+  for (const p of parts) {
+    if (p.partNo !== 1) continue;
+    const subs = buildSubsections([p]);
+    // overview = content before 1.2 heading within Part 1
+    let overview = p.text || '';
+    const m = overview.match(re12);
+    if (m && m.index !== undefined) {
+      overview = overview.slice(0, m.index).trimEnd();
+    }
+    const bucket = { overview: overview || null, p14: null, p15: null, p17: null, p18: null };
+    const pick14 = sliceBy('1.4', '1.5');
+    const pick15 = sliceBy('1.5', '1.6');
+    const pick17 = sliceBy('1.7', '1.8');
+    const pick18 = sliceBy('1.8', '1.9');
+    bucket.p14 = pick14(p.text);
+    bucket.p15 = pick15(p.text);
+    bucket.p17 = pick17(p.text);
+    bucket.p18 = pick18(p.text);
+    // fallback by parsed subsections if direct slice missed
+    for (const it of subs) {
+      if (!bucket.p14 && it.level2Code === '1.4') bucket.p14 = it.text;
+      if (!bucket.p15 && it.level2Code === '1.5') bucket.p15 = it.text;
+      if (!bucket.p17 && it.level2Code === '1.7') bucket.p17 = it.text;
+      if (!bucket.p18 && it.level2Code === '1.8') bucket.p18 = it.text;
+    }
+    pMap.set(p.sectionId, bucket);
+  }
   return sections.map(s => ({
-    ...s,
-    overview: s.text || null,
-    p14: null,
-    p15: null,
-    p17: null,
-    p18: null,
+    id: s.id,
+    sourceId: s.sourceId,
+    title: s.title,
+    startPage: s.startPage,
+    endPage: s.endPage,
+    section: s.section,
+    ...(pMap.get(s.id) ?? { overview: s.text || null, p14: null, p15: null, p17: null, p18: null }),
   }));
 }
 
-export function buildSectionRelations(sections) {
+export function buildSectionRelations(parts, sections) {
   const rels = [];
   const re = /\bSection\s+(\d+)\s+(\d+)\s+(\d+)\b/gi;
   const codeToId = new Map(sections.map(s => [s.section, s.id]));
-  for (const s of sections) {
+  for (const p of parts) {
+    if (p.partNo !== 1) continue;
+    const subs = buildSubsections([p]);
+    const sec12 = subs.find(it => it.level2Code === '1.2');
+    const text = sec12 ? sec12.text : '';
     let m;
-    while ((m = re.exec(s.text)) !== null) {
+    while ((m = re.exec(text)) !== null) {
       const code = `${m[1]} ${m[2]} ${m[3]}`;
       const target = codeToId.get(code);
-      if (target && target !== s.id) rels.push({ sectionId: s.id, relatedSectionId: target });
+      if (target && target !== p.sectionId) rels.push({ sectionId: p.sectionId, relatedSectionId: target });
     }
   }
   return rels;

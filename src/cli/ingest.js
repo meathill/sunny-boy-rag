@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import 'dotenv/config';
 
 import { parsePdf } from '../pdf/extract.js';
-import { buildSections, buildParts, buildSubsections, enrichSectionsForDb } from '../pdf/analyze.js';
+import { buildSections, buildParts, buildSubsections, enrichSectionsForDb, buildSectionRelations } from '../pdf/analyze.js';
 import { chunkSections } from '../pdf/chunk.js';
 
 async function main() {
@@ -68,9 +68,9 @@ async function main() {
   try {
     const { initDb, saveSections, saveParts, saveChunks, refreshDocument, saveSectionRelations } = await import('../db/sqlite.js');
     const db = initDb(dbPath ?? ':memory:');
-    const enriched = enrichSectionsForDb(sections);
+    const enriched = enrichSectionsForDb(sections, parts);
     saveSections(db, file, enriched);
-    const relations = buildSectionRelations(sections);
+    const relations = buildSectionRelations(parts, sections);
     if (relations.length) saveSectionRelations(db, relations);
     saveParts(db, file, parts);
     saveChunks(db, chunks);

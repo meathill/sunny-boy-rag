@@ -6,9 +6,8 @@ export function initDb(path = DEFAULT_PATH) {
   db.pragma('journal_mode = WAL');
   db.exec(`
     CREATE TABLE IF NOT EXISTS sections (
-      id TEXT PRIMARY KEY,
+      id TEXT PRIMARY KEY, -- section code 'X Y Z'
       source_id TEXT NOT NULL,
-      section_code TEXT,
       title TEXT,
       start_page INTEGER,
       end_page INTEGER,
@@ -16,8 +15,7 @@ export function initDb(path = DEFAULT_PATH) {
       p14 TEXT,
       p15 TEXT,
       p17 TEXT,
-      p18 TEXT,
-      UNIQUE(source_id, section_code)
+      p18 TEXT
     );
 
     CREATE TABLE IF NOT EXISTS parts (
@@ -76,8 +74,6 @@ export function initDb(path = DEFAULT_PATH) {
       PRIMARY KEY(section_id, related_section_id)
     );
 
-
-    -- re-open documents closing bracket lost earlier
     CREATE TABLE IF NOT EXISTS documents (
       source_id TEXT PRIMARY KEY,
       page_count INTEGER,
@@ -87,18 +83,10 @@ export function initDb(path = DEFAULT_PATH) {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
-
     CREATE TABLE IF NOT EXISTS section_definition_relations (
       section_id TEXT NOT NULL,
       definition_id TEXT NOT NULL,
       PRIMARY KEY(section_id, definition_id)
-    );
-
-      page_count INTEGER,
-      processed_pages INTEGER DEFAULT 0,
-      chunk_count INTEGER DEFAULT 0,
-      updated_at TEXT,
-      created_at TEXT DEFAULT (datetime('now'))
     );
   `);
   return db;
@@ -119,15 +107,21 @@ export function saveChunks(db, chunks) {
       end_page = excluded.end_page,
       text = excluded.text
   `);
-  const tx = db.transaction((rows) => { for (const r of rows) stmt.run({ ...r, partNo: r.partNo ?? null }); });
+  const tx = db.transaction((rows) => { for (const r of rows) stmt.run({
+    ...r,
+    partNo: r.partNo ?? null,
+    level2Code: r.level2Code ?? null,
+    level3Code: r.level3Code ?? null,
+  }); });
   tx(chunks);
 }
 
 export function saveSections(db, sourceId, sections) {
   const stmt = db.prepare(`
-    INSERT INTO sections (id, source_id, section_code, title, start_page, end_page, overview, p14, p15, p17, p18)
-    VALUES (@id, @sourceId, @section, @title, @startPage, @endPage, @overview, @p14, @p15, @p17, @p18)
-    ON CONFLICT(source_id, section_code) DO UPDATE SET
+    INSERT INTO sections (id, source_id, title, start_page, end_page, overview, p14, p15, p17, p18)
+    VALUES (@id, @sourceId, @title, @startPage, @endPage, @overview, @p14, @p15, @p17, @p18)
+    ON CONFLICT(id) DO UPDATE SET
+      source_id = excluded.source_id,
       title = excluded.title,
       start_page = excluded.start_page,
       end_page = excluded.end_page,
@@ -137,7 +131,18 @@ export function saveSections(db, sourceId, sections) {
       p17 = excluded.p17,
       p18 = excluded.p18
   `);
-  const withSrc = sections.map(s => ({ ...s, sourceId }));
+  const withSrc = sections.map(s => ({
+    id: s.id,
+    sourceId,
+    title: s.title,
+    startPage: s.startPage,
+    endPage: s.endPage,
+    overview: s.overview ?? null,
+    p14: s.p14 ?? null,
+    p15: s.p15 ?? null,
+    p17: s.p17 ?? null,
+    p18: s.p18 ?? null,
+  }));
   const tx = db.transaction((rows) => { for (const r of rows) stmt.run(r); });
   tx(withSrc);
 }
