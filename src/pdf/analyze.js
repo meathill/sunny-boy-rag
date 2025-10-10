@@ -141,16 +141,25 @@ export function enrichSectionsForDb(sections, parts) {
   function sliceBy(startCode, endCode) {
     const reStart = new RegExp('^\\s*' + startCode.replace('.', '\\s*\\.\\s*') + '(?!\\d)\\b', 'm');
     const reEnd = endCode ? new RegExp('^\\s*' + endCode.replace('.', '\\s*\\.\\s*') + '(?!\\d)\\b', 'm') : null;
+    const reNextPart = /^\s*PART\s+2\b[\s\S]*/m;
+    const reEndOfSec = /\n?\s*END OF SECTION\b[\s\S]*$/i;
     return (txt) => {
       const s = txt || '';
       const ms = s.match(reStart);
       if (!ms || ms.index === undefined) return null;
       const start = ms.index;
       let end = s.length;
+      const tail = s.slice(start + 1);
+      const candidates = [];
       if (reEnd) {
-        const me = s.slice(start + 1).match(reEnd);
-        if (me && me.index !== undefined) end = start + 1 + me.index;
+        const me = tail.match(reEnd);
+        if (me && me.index !== undefined) candidates.push(start + 1 + me.index);
       }
+      const mp = tail.match(reNextPart);
+      if (mp && mp.index !== undefined) candidates.push(start + 1 + mp.index);
+      const meos = s.match(reEndOfSec);
+      if (meos && meos.index !== undefined) candidates.push(meos.index);
+      if (candidates.length) end = Math.min(...candidates.filter(i => i > start));
       return s.slice(start, end).trimEnd();
     };
   }
