@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import 'dotenv/config';
 
 import { parsePdf } from '../pdf/extract.js';
-import { buildSections, buildParts, buildSubsections, enrichSectionsForDb, buildSectionRelations } from '../pdf/analyze.js';
+import { buildSections, buildParts, buildSubsections, enrichSectionsForDb, buildSectionRelations, buildStdRefs } from '../pdf/analyze.js';
 import { chunkSections } from '../pdf/chunk.js';
 
 async function main() {
@@ -66,12 +66,15 @@ async function main() {
 
   // Write to DB if binding available; prefer provided path, else :memory:
   try {
-    const { initDb, saveSections, saveParts, saveChunks, refreshDocument, saveSectionRelations } = await import('../db/sqlite.js');
+    const { initDb, saveSections, saveParts, saveChunks, refreshDocument, saveSectionRelations, saveStdRefs, saveSectionStdRefRelations } = await import('../db/sqlite.js');
     const db = initDb(dbPath ?? ':memory:');
     const enriched = enrichSectionsForDb(sections, parts);
     saveSections(db, file, enriched);
     const relations = buildSectionRelations(parts, sections);
     if (relations.length) saveSectionRelations(db, relations);
+    const { stdRefs, relations: stdRefRelations } = buildStdRefs(parts);
+    if (stdRefs.length) saveStdRefs(db, stdRefs);
+    if (stdRefRelations.length) saveSectionStdRefRelations(db, stdRefRelations);
     saveParts(db, file, parts);
     saveChunks(db, chunks);
     refreshDocument(db, file, { pageCount: meta.pageCount, processedPages: textByPage.length });

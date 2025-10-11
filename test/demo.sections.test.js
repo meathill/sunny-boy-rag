@@ -66,3 +66,43 @@ describe('demo.pdf sections', () => {
     }
   });
 });
+
+  test('std_refs extracted from Part 1 - 1.3 and relations saved', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ingest-refs-'));
+    const dbPath = path.join(dir, 'data.sqlite');
+    const pdf = 'assets/demo.pdf';
+
+    const {stdout} = await execNode(['src/cli/ingest.js', pdf, '--pages', '50', '--max', '2000', '--db', dbPath]);
+    assert.equal(stdout.trim(), 'done');
+
+    const { default: Database } = await import('better-sqlite3');
+    const db = new Database(dbPath);
+    const refs = db.prepare('SELECT * FROM std_refs ORDER BY id').all();
+    const rels = db.prepare('SELECT * FROM section_std_refs_relations').all();
+    
+    assert.ok(refs.length > 30, `should extract ~36 refs, got ${refs.length}`);
+    assert.ok(rels.length >= 1);
+    
+    // Test multi-line shared title: "IEC 60947-2 / \n BS EN 60898-2"
+    const iec60947 = refs.find(r => r.id === 'IEC 60947-2');
+    const bsen60898 = refs.find(r => r.id === 'BS EN 60898-2');
+    assert.ok(iec60947, 'IEC 60947-2 should exist');
+    assert.ok(bsen60898, 'BS EN 60898-2 should exist');
+    assert.ok(iec60947.title && iec60947.title.includes('Low'), 'IEC 60947-2 should have shared title');
+    assert.ok(bsen60898.title && bsen60898.title.includes('Low'), 'BS EN 60898-2 should have shared title');
+    
+    // Test trailing colon removal: "IEC 337-2:"
+    const iec337 = refs.find(r => r.id === 'IEC 337-2');
+    assert.ok(iec337, 'IEC 337-2 should exist (colon removed)');
+    assert.ok(iec337.title, 'IEC 337-2 should have title');
+    
+    // Test other edge case patterns
+    assert.ok(refs.find(r => r.id === 'DEWA Regulations'), 'DEWA Regulations should exist');
+    assert.ok(refs.find(r => r.id === 'IEC 51'), 'IEC 51 should exist');
+    assert.ok(refs.find(r => r.id === 'IEC/EN 61000-4-5'), 'IEC/EN 61000-4-5 should exist');
+    
+    // All refs should have titles
+    const noTitle = refs.filter(r => !r.title);
+    assert.strictEqual(noTitle.length, 0, `all refs should have title, but ${noTitle.length} missing: ${noTitle.map(r => r.id).join(', ')}`);
+  });
+

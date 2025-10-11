@@ -204,6 +204,100 @@ export function enrichSectionsForDb(sections, parts) {
   }));
 }
 
+
+export function buildStdRefs(parts) {
+  const refs = new Map();
+  const relations = [];
+  const slice = (txt, start, end) => {
+    const s = txt || '';
+    const startRe = new RegExp('^\\s*' + start.replace('.', '\\s*\\.\\s*') + '(?!\\d)\\b', 'm');
+    const ms = s.match(startRe);
+    if (!ms || ms.index === undefined) return '';
+    const sIdx = ms.index;
+    const tail = s.slice(sIdx + 1);
+    const ends = [];
+    const endRe = end ? new RegExp('^\\s*' + end.replace('.', '\\s*\\.\\s*') + '(?!\\d)\\b', 'm') : null;
+    if (endRe) { const me = tail.match(endRe); if (me && me.index !== undefined) ends.push(sIdx + 1 + me.index); }
+    const mPart2 = tail.match(/^\\s*PART\\s+2\\b/m); if (mPart2 && mPart2.index !== undefined) ends.push(sIdx + 1 + mPart2.index);
+    const mEos = s.match(/\\n?\\s*END OF SECTION\\b[\\s\\S]*$/i); if (mEos && mEos.index !== undefined) ends.push(mEos.index);
+    const eIdx = ends.length ? Math.min(...ends.filter(i => i > sIdx)) : s.length;
+    return s.slice(sIdx, eIdx).trim();
+  };
+  
+  // Match line starting with standard ID, capture ID and optional title on same line
+  // Support: IEC/EN prefix, DEWA Regulations, short codes like IEC 51
+  // Also match lines with just ID and no title (title will be null)
+  // Use [ \t]+ instead of \s+ to avoid matching newlines
+  // Allow trailing colon after code (e.g., "IEC 337-2:") - strip it from ID
+  const lineRe = /^([A-Z]+(?:[ \t]*\/[ \t]*[A-Z]+)*)[ \t]+(Regulations|[A-Z0-9][A-Z0-9\-\/: ]*(?:\d|Regulations)):?(?:[ \t]+([^\n]+))?$/gm;
+  
+  const normalize = (prefix, rest) => {
+    if (!prefix) return rest.replace(/\s+/g, ' ').trim();
+    const pfx = prefix.replace(/\s+/g, '').replace(/\//g, '/');
+    let r = rest.replace(/\s*[–-]\s*/g, '-').replace(/\s+/g, ' ').trim();
+    r = r.replace(/\s*-\s*/g, '-').replace(/\s*\/\s*/g, '/');
+    return `${pfx} ${r}`;
+  };
+  
+  for (const p of parts) {
+    if (p.partNo !== 1) continue;
+    let block = slice(p.text || '', '1.3', '1.4');
+    if (!block) continue;
+    
+    // Handle multi-standard lines like "IEC 60947-2 / \n BS EN 60898-2 ..."
+    // The line with "/" has no title, but shares title with next line
+    const lines = block.split('\n');
+    const sharedTitleMap = new Map(); // lineIdx => title from next line
+    
+    // First pass: identify lines ending with "/" and extract next line's title
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (/\/\s*$/.test(lines[i])) {
+        // Remove slash from current line
+        lines[i] = lines[i].replace(/\s*\/\s*$/, '');
+        // Extract title from next line if it matches pattern
+        const nextLine = lines[i + 1];
+        const m = nextLine.match(/^[A-Z]+(?:[ \t]*\/[ \t]*[A-Z]+)*[ \t]+(?:Regulations|[A-Z0-9][A-Z0-9\-\/: ]*(?:\d|Regulations)):?(?:[ \t]+([^\n]+))?$/);
+        if (m && m[1]) {
+          sharedTitleMap.set(i, m[1].trim());
+        }
+      }
+    }
+    
+    block = lines.join('\n');
+    
+    const seen = new Set();
+    let m;
+    lineRe.lastIndex = 0;
+    let currentLineIdx = 0;
+    let lastMatchEnd = 0;
+    
+    while ((m = lineRe.exec(block)) !== null) {
+      // Calculate which line this match is on
+      const textBefore = block.slice(lastMatchEnd, m.index);
+      currentLineIdx += (textBefore.match(/\n/g) || []).length;
+      
+      const prefix = m[1];
+      const code = m[2];
+      let title = m[3] ? m[3].trim() : null;
+      
+      // Check if this line should use shared title
+      if (!title && sharedTitleMap.has(currentLineIdx)) {
+        title = sharedTitleMap.get(currentLineIdx);
+      }
+      
+      const id = normalize(prefix, code);
+      if (!refs.has(id)) refs.set(id, { id, title });
+      if (!seen.has(id)) {
+        relations.push({ sectionId: p.sectionId, referenceId: id });
+        seen.add(id);
+      }
+      
+      lastMatchEnd = m.index + m[0].length;
+    }
+  }
+  return { stdRefs: Array.from(refs.values()), relations };
+}
+
 export function buildSectionRelations(parts, sections) {
   const rels = [];
   const re = /\bSection\s+(\d+)\s+(\d+)\s+(\d+)\b/gi;

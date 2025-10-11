@@ -7,10 +7,16 @@
   - overview：Part 1 开头至 1.2 前（不含 1.2 标题）
   - 1.4/1.5/1.7/1.8：各自从标题起至下一个同级编号前，或至 PART 2/END OF SECTION
 - Section relations：仅从 Part 1 的 1.2 文本抽取“Section X Y Z”，保存 (section_id, related_section_id)。
+- Std refs (1.3)：从 Part 1 的 1.3 References 提取，支持多种格式：
+  - 基础：`IEC 51`, `BS 7671`, `DEWA Regulations`
+  - 带斜杠：`IEC/EN 61000-4-5`（前缀可含斜杠）
+  - 跨行共享title：`IEC 60947-2 / \n BS EN 60898-2 ...`（行尾斜杠表示下行同类），两者共用下一行title
+  - 尾部冒号清理：`IEC 337-2:` → `IEC 337-2`
+  - 提取后存入 std_refs(id, title)，并建立 section_std_refs_relations(section_id, reference_id)
 - 页眉页脚：移除结尾 “Pages?: N of M” 行；对以 “DMBLP - RTA - N0001 … Pages?: N of M” 结尾的页尾块进行剔除，保守回退避免误删整页。
 - CLI：默认将结果写入 last-ingest.json，stdout 仅输出 done/failed；dotenv 读取 .env，优先级 --db > SUNNY_SQLITE > :memory:
-- DB：sections.id=Section Code（X Y Z），去掉 section_code 字段；保存 overview/p14/p15/p17/p18 原文切片；section_relations 唯一约束。
-- 测试：新增 demo.pdf e2e 覆盖上述切分、清洗与关联；回归防止 1.2/页脚混入。
+- DB：sections.id=Section Code（X Y Z），去掉 section_code 字段；保存 overview/p14/p15/p17/p18 原文切片；section_relations、section_std_refs_relations 唯一约束。
+- 测试：新增 demo.pdf e2e 覆盖切分、清洗、Section/Std关联、边界情况（共享title、冒号清理等）；回归防止 1.2/页脚混入。
 
 
 ## 技术决策与约定

@@ -52,8 +52,7 @@ export function initDb(path = DEFAULT_PATH) {
 
     CREATE TABLE IF NOT EXISTS std_refs (
       id TEXT PRIMARY KEY,
-      title TEXT,
-      raw TEXT
+      title TEXT
     );
 
     CREATE TABLE IF NOT EXISTS section_std_refs_relations (
@@ -184,6 +183,27 @@ export function saveSectionRelations(db, relations) {
     sectionId: r.sectionId,
     relatedSectionId: r.relatedSectionId,
   }); });
+  tx(relations);
+}
+
+export function saveStdRefs(db, refs) {
+  const stmt = db.prepare(`
+    INSERT INTO std_refs (id, title)
+    VALUES (@id, @title)
+    ON CONFLICT(id) DO UPDATE SET
+      title = COALESCE(excluded.title, std_refs.title)
+  `);
+  const tx = db.transaction((rows) => { for (const r of rows) stmt.run({ id: r.id, title: r.title }); });
+  tx(refs);
+}
+
+export function saveSectionStdRefRelations(db, relations) {
+  const stmt = db.prepare(`
+    INSERT INTO section_std_refs_relations (section_id, reference_id)
+    VALUES (@sectionId, @referenceId)
+    ON CONFLICT(section_id, reference_id) DO NOTHING
+  `);
+  const tx = db.transaction((rows) => { for (const r of rows) stmt.run(r); });
   tx(relations);
 }
 

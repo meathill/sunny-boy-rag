@@ -41,4 +41,4 @@ Sunny boy RAG
 工具使用说明
 ---
 
-[使用说明（Usage）](./usage.md)
+[使用说明（Usage）](docs/usage.md)
