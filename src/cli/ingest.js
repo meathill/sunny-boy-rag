@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import 'dotenv/config';
 
 import { parsePdf } from '../pdf/extract.js';
-import { buildSections, buildParts, buildSubsections, enrichSectionsForDb, buildSectionRelations, buildStdRefs } from '../pdf/analyze.js';
+import { buildSections, buildParts, buildSubsections, enrichSectionsForDb, buildSectionRelations, buildStdRefs, buildDefinitions } from '../pdf/analyze.js';
 import { chunkSections } from '../pdf/chunk.js';
 
 async function main() {
@@ -66,7 +66,7 @@ async function main() {
 
   // Write to DB if binding available; prefer provided path, else :memory:
   try {
-    const { initDb, saveSections, saveParts, saveChunks, refreshDocument, saveSectionRelations, saveStdRefs, saveSectionStdRefRelations } = await import('../db/sqlite.js');
+    const { initDb, saveSections, saveParts, saveChunks, refreshDocument, saveSectionRelations, saveStdRefs, saveSectionStdRefRelations, saveDefinitions, saveSectionDefinitionRelations } = await import('../db/sqlite.js');
     const db = initDb(dbPath ?? ':memory:');
     const enriched = enrichSectionsForDb(sections, parts);
     saveSections(db, file, enriched);
@@ -75,6 +75,9 @@ async function main() {
     const { stdRefs, relations: stdRefRelations } = buildStdRefs(parts);
     if (stdRefs.length) saveStdRefs(db, stdRefs);
     if (stdRefRelations.length) saveSectionStdRefRelations(db, stdRefRelations);
+    const { definitions, relations: defRelations } = buildDefinitions(parts);
+    if (definitions.length) saveDefinitions(db, definitions);
+    if (defRelations.length) saveSectionDefinitionRelations(db, defRelations);
     saveParts(db, file, parts);
     saveChunks(db, chunks);
     refreshDocument(db, file, { pageCount: meta.pageCount, processedPages: textByPage.length });

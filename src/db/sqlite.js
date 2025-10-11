@@ -63,8 +63,7 @@ export function initDb(path = DEFAULT_PATH) {
 
     CREATE TABLE IF NOT EXISTS definitions (
       id TEXT PRIMARY KEY,
-      term TEXT,
-      raw TEXT
+      definition TEXT
     );
 
     CREATE TABLE IF NOT EXISTS section_relations (
@@ -225,4 +224,25 @@ export function getDocuments(db, { limit = 100, offset = 0 } = {}) {
 
 export function getDocument(db, sourceId) {
   return db.prepare('SELECT * FROM documents WHERE source_id = ?').get(sourceId);
+}
+
+export function saveDefinitions(db, definitions) {
+  const stmt = db.prepare(`
+    INSERT INTO definitions (id, definition)
+    VALUES (@id, @definition)
+    ON CONFLICT(id) DO UPDATE SET
+      definition = COALESCE(excluded.definition, definitions.definition)
+  `);
+  const tx = db.transaction((rows) => { for (const r of rows) stmt.run({ id: r.id, definition: r.definition }); });
+  tx(definitions);
+}
+
+export function saveSectionDefinitionRelations(db, relations) {
+  const stmt = db.prepare(`
+    INSERT INTO section_definition_relations (section_id, definition_id)
+    VALUES (@sectionId, @definitionId)
+    ON CONFLICT(section_id, definition_id) DO NOTHING
+  `);
+  const tx = db.transaction((rows) => { for (const r of rows) stmt.run(r); });
+  tx(relations);
 }

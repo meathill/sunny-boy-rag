@@ -17,10 +17,14 @@
 - 行为说明：
   - parsePdf 自动识别真实 PDF；非 PDF（纯文本等）回退为单页文本，便于调试
   - 使用 pdfjs-dist 提取逐页文本，已适配 Node 环境（以 Uint8Array 读取）
-  - buildSections 自动检测“1.”、“1.1”式标题并聚合
+  - buildSections 自动检测"Section X Y Z"字面标识并按 section 聚合
   - chunkSections 以章节/段落为主进行切片（无重叠）
   - 输出：默认写入 last-ingest.json，stdout 仅输出 done/failed
   - 切片：按章节/小节划分（无重叠），Part 1 提取 overview（至 1.2 前）、1.4/1.5/1.7/1.8 区段
+  - 结构化提取：
+    - 1.2 Related Sections：提取 Section X Y Z 引用，建立 section_relations 表
+    - 1.3 References：提取技术规范（IEC、BS、DEWA 等），建立 std_refs 和 section_std_refs_relations 表
+    - 1.6 Definitions/Acronyms：提取缩写和定义，建立 definitions 和 section_definition_relations 表
 
   - DB 写入：
     - 环境变量 SUNNY_SQLITE 指定 sqlite 文件路径；若未设置且未传 --db，则使用内存数据库
@@ -30,6 +34,7 @@
 - 示例：
   pnpm ingest assets/demo.pdf --pages 3 --max 800
   # 输出文件：last-ingest.json
+  # 同时写入数据库（如配置了 SUNNY_SQLITE）
 
 ## 查询子命令
 - 列表：pnpm ingest list [--source <file>] [--limit N] [--offset N] [--db path]
@@ -49,3 +54,12 @@
     "sections": [{ id, title, section, startPage, endPage, text }],
     "chunks": [{ id, sourceId, sectionId, title, startPage, endPage, text }]
   }
+
+## 数据库结构
+- sections：存储 Section 信息（id=Section Code 'X Y Z'），包含 overview、p14/p15/p17/p18 等关键切片
+- std_refs：存储技术规范引用（IEC、BS、DEWA 等）
+- definitions：存储缩写定义（AC、DEWA、ATS/ATC 等）
+- section_relations：Section 之间的引用关系
+- section_std_refs_relations：Section 与技术规范的关联
+- section_definition_relations：Section 与缩写定义的关联
+- parts/chunks/documents：其他辅助表

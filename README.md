@@ -19,8 +19,8 @@ Sunny boy RAG
 2. 对文档进行拆分，因为文档数量巨大，几乎不可能一次性处理
 3. 使用LLM逐片解析，并生成准确的数据库
 4. 暂时使用本地数据库 sqlite 存储
-5. 因为涉及到引用，比如：“不锈钢元器件需遵守 ABC-001 规范”，
-    所以数据可能需要多轮处理
+5. 因为涉及到引用，比如："不锈钢元器件需遵守 ABC-001 规范"，
+   所以数据可能需要多轮处理
 6. 开发 Web UI，提供简单的输入，然后生成 SQL，并检索结果
 7. 然后通过AI生成语义化结果
 
@@ -29,12 +29,17 @@ Sunny boy RAG
 
 - 阶段一（读取+分析+切片）已完成：
   - 支持解析真实 PDF（pdfjs-dist），文本文件将回退为单页解析
-  - 自动检测章节标题（1., 1.1 等）并聚合为段落
+  - 自动检测"Section X Y Z"字面标识并聚合为 Section
+  - 支持 Part 1/2/3 识别，从 Part 1 提取结构化数据：
+    - 1.2 Related Sections：建立 Section 间引用关系
+    - 1.3 References：提取技术规范（IEC、BS、DEWA 等）
+    - 1.6 Definitions：提取缩写和定义（AC、DEWA、ATS/ATC 等）
   - 支持按字符长度切片（默认无重叠，按章节/段落分片）
   - 提供 CLI（ingest）默认写入 last-ingest.json，并写入 sqlite（--db > SUNNY_SQLITE > 内存），stdout 仅打印 done/failed
-- 测试：包含单元测试、真实 PDF 的 e2e 测试；数据库相关测试在本地可用原生绑定时执行
-  - Section 按“Section X Y Z”识别，id 即“X Y Z”；Part 1 中切出 overview（至 1.2 前）及 1.4/1.5/1.7/1.8 段
-  - 从 Part 1 的 1.2 抽取 section_relations；清洗页眉页脚（含 Pages: N of M、DMBLP - RTA - N0001 块）
+- 测试：包含单元测试、真实 PDF（demo.pdf）的 e2e 测试；数据库相关测试在本地可用原生绑定时执行
+  - Section 按"Section X Y Z"识别，id 即"X Y Z"；Part 1 中切出 overview（至 1.2 前）及 1.4/1.5/1.7/1.8 段
+  - 从 Part 1 的 1.2/1.3/1.6 分别抽取 section_relations、std_refs、definitions 及关联表
+  - 清洗页眉页脚（含 Pages: N of M、DMBLP - RTA - N0001 块）
 
 
 

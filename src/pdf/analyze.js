@@ -333,3 +333,90 @@ export function buildSectionRelations(parts, sections) {
     return true;
   });
 }
+
+export function buildDefinitions(parts) {
+  const defs = new Map();
+  const relations = [];
+  
+  const slice = (txt, start, end) => {
+    const s = txt || '';
+    const startRe = new RegExp('^\\s*' + start.replace('.', '\\s*\\.\\s*') + '(?!\\d)\\b', 'm');
+    const ms = s.match(startRe);
+    if (!ms || ms.index === undefined) return '';
+    const sIdx = ms.index;
+    const tail = s.slice(sIdx + 1);
+    const ends = [];
+    const endRe = end ? new RegExp('^\\s*' + end.replace('.', '\\s*\\.\\s*') + '(?!\\d)\\b', 'm') : null;
+    if (endRe) { const me = tail.match(endRe); if (me && me.index !== undefined) ends.push(sIdx + 1 + me.index); }
+    const mPart2 = tail.match(/^\s*PART\s+2\b/m); if (mPart2 && mPart2.index !== undefined) ends.push(sIdx + 1 + mPart2.index);
+    const mEos = s.match(/\n?\s*END OF SECTION\b[\s\S]*$/i); if (mEos && mEos.index !== undefined) ends.push(mEos.index);
+    const eIdx = ends.length ? Math.min(...ends.filter(i => i > sIdx)) : s.length;
+    return s.slice(sIdx, eIdx).trim();
+  };
+  
+  // Helper: does token look like an abbreviation?
+  // Abbreviations are typically: all uppercase, or contain (MV), or short AND uppercase
+  const isAbbrToken = (token) => {
+    if (/^\([A-Z]+\)$/.test(token)) return true; // (MV), (LV), etc.
+    if (token.length <= 3 && /^[A-Z]+$/.test(token)) return true; // ETP, Cu, etc. (short AND uppercase)
+    if (token.length > 3 && /^[A-Z]+$/.test(token)) return true; // KEMA, etc. (longer all-uppercase)
+    return false;
+  };
+  
+  // Match lines with format: ABBREVIATION   Definition text
+  // All tokens separated by 3+ spaces in PDF
+  // Special case: "O - C - O" has space-hyphen-space within, treat as single token
+  // Strategy: 
+  //   - First token is always part of abbreviation, may contain " - " pattern
+  //   - Second token is part of abbreviation IF it looks like one (short, uppercase, or has parens)
+  //   - Otherwise, second token starts the definition
+  // Definition must have at least 2 words
+  // Token pattern: allows "X - Y - Z" format by matching sequences of chars separated by " - "
+  const lineRe = /^([A-Za-z][A-Za-z0-9\/\-\(\)]*(?:\s+-\s+[A-Za-z0-9\/\-\(\)]+)*)(?:\s{3,}([A-Za-z0-9\/\-\(\)]+(?:\s+-\s+[A-Za-z0-9\/\-\(\)]+)*))?\s{3,}(.+?)$/gm;
+  
+  for (const p of parts) {
+    if (p.partNo !== 1) continue;
+    let block = slice(p.text || '', '1.6', '1.7');
+    if (!block) continue;
+    
+    const seen = new Set();
+    let m;
+    lineRe.lastIndex = 0;
+    
+    while ((m = lineRe.exec(block)) !== null) {
+      const token1 = m[1].trim();
+      const token2 = m[2] ? m[2].trim() : '';
+      let restText = m[3].trim();
+      
+      let abbr;
+      let definition;
+      
+      if (token2 && isAbbrToken(token2)) {
+        // token2 is part of abbreviation
+        abbr = `${token1} ${token2}`;
+        definition = restText;
+      } else if (token2) {
+        // token2 is start of definition
+        abbr = token1;
+        definition = `${token2}   ${restText}`;
+      } else {
+        // no token2, just token1 and definition
+        abbr = token1;
+        definition = restText;
+      }
+      
+      // Normalize definition spacing
+      definition = definition.replace(/\s+/g, ' ');
+      
+      if (!defs.has(abbr)) {
+        defs.set(abbr, { id: abbr, definition });
+      }
+      if (!seen.has(abbr)) {
+        relations.push({ sectionId: p.sectionId, definitionId: abbr });
+        seen.add(abbr);
+      }
+    }
+  }
+  
+  return { definitions: Array.from(defs.values()), relations };
+}
