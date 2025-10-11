@@ -19,15 +19,15 @@ describe('schema: sections/parts', { skip: !hasDb }, () => {
 
   test('saveSections inserts and chunks link to section', () => {
     const src = 'docZ.pdf';
-    const sections = [{ id: 'sec:1', section: '1', title: '总则', startPage: 1, endPage: 2, text: 'A' }];
+    const sections = [{ id: '1', section: '1', title: '总则', startPage: 1, endPage: 2, overview: null, p14: null, p15: null, p17: null, p18: null }];
     saveSections(db, src, sections);
-    const row = db.prepare('SELECT * FROM sections WHERE id = ?').get('sec:1');
-    assert.equal(row.section_code, '1');
+    const row = db.prepare('SELECT * FROM sections WHERE id = ?').get('1');
+    assert.equal(row.id, '1');
     assert.equal(row.title, '总则');
 
     // Save a chunk and verify foreign key by convention
-    saveChunks(db, [{ id: 'ch:1', sourceId: src, sectionId: 'sec:1', title: 't', startPage: 1, endPage: 1, text: 'a' }]);
+    saveChunks(db, [{ id: 'ch:1', sourceId: src, sectionId: '1', title: 't', startPage: 1, endPage: 1, text: 'a' }]);
     const c = db.prepare('SELECT * FROM chunks WHERE id = ?').get('ch:1');
-    assert.equal(c.section_id, 'sec:1');
+    assert.equal(c.section_id, '1');
   });
 });

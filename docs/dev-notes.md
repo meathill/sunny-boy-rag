@@ -1,4 +1,17 @@
 # 开发笔记
+# 开发笔记（更新）
+
+- Section 检测：仅以“Section X Y Z”为边界，section id=“X Y Z”。
+- Part 识别：支持“PART 1./PART 1 – …”等变体。
+- Part 1 切片：
+  - overview：Part 1 开头至 1.2 前（不含 1.2 标题）
+  - 1.4/1.5/1.7/1.8：各自从标题起至下一个同级编号前，或至 PART 2/END OF SECTION
+- Section relations：仅从 Part 1 的 1.2 文本抽取“Section X Y Z”，保存 (section_id, related_section_id)。
+- 页眉页脚：移除结尾 “Pages?: N of M” 行；对以 “DMBLP - RTA - N0001 … Pages?: N of M” 结尾的页尾块进行剔除，保守回退避免误删整页。
+- CLI：默认将结果写入 last-ingest.json，stdout 仅输出 done/failed；dotenv 读取 .env，优先级 --db > SUNNY_SQLITE > :memory:
+- DB：sections.id=Section Code（X Y Z），去掉 section_code 字段；保存 overview/p14/p15/p17/p18 原文切片；section_relations 唯一约束。
+- 测试：新增 demo.pdf e2e 覆盖上述切分、清洗与关联；回归防止 1.2/页脚混入。
+
 
 ## 技术决策与约定
 - PDF 解析：使用 pdfjs-dist legacy/build；必须传入 Uint8Array（不要直接传 Buffer）。

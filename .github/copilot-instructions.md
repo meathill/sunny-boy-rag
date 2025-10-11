@@ -55,10 +55,8 @@ PDF 信息结构
 基于以上这些信息结构，我们需要重新设计数据库架构，以便更好的存储和查询信息。
 
 - section 表
-    - 记录 Section 的 ID（即上面说的 `X Y Z`、标题、起始页码、结束页码
-    - 主要从 Part 1 里提取
-    - 记录 overview
-    - 记录 1.4，1.5，1.7，1.8 里的主要内容
+    - 主键 id=Section Code（`X Y Z`），记录标题、起始页码、结束页码
+    - 从 Part 1 中提取：overview（到 1.2 之前）、1.4、1.5、1.7、1.8 的原文切片（各自到下一节前）
 - section_relations 表
     - 记录 Section 之间的关系，N:N 关系
     - 记录涉及到的 Section ID 和 Related Section ID
@@ -66,6 +64,7 @@ PDF 信息结构
     - 需要对 section_id 和 related_section_id 做联合唯一索引
 - std_refs 表
     - 从 Section 的 1.3 References 提取，存储各种技术规范
+    - 仅从 Part 1 的 1.2 相关章节中抽取；section_id=当前Section的`X Y Z`，related_section_id=引用的`X Y Z`
     - 以技术规范的 ID 作为主键，比如 `BS 7671`
     - 此表格在拆分阶段仅构建，内容填充放到下一步AI解析再处理
 - section_std_refs_relations 表

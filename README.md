@@ -31,8 +31,11 @@ Sunny boy RAG
   - 支持解析真实 PDF（pdfjs-dist），文本文件将回退为单页解析
   - 自动检测章节标题（1., 1.1 等）并聚合为段落
   - 支持按字符长度切片（默认无重叠，按章节/段落分片）
-  - 提供 CLI（ingest）输出 JSON，并写入 sqlite（--db > SUNNY_SQLITE > 内存）
+  - 提供 CLI（ingest）默认写入 last-ingest.json，并写入 sqlite（--db > SUNNY_SQLITE > 内存），stdout 仅打印 done/failed
 - 测试：包含单元测试、真实 PDF 的 e2e 测试；数据库相关测试在本地可用原生绑定时执行
+  - Section 按“Section X Y Z”识别，id 即“X Y Z”；Part 1 中切出 overview（至 1.2 前）及 1.4/1.5/1.7/1.8 段
+  - 从 Part 1 的 1.2 抽取 section_relations；清洗页眉页脚（含 Pages: N of M、DMBLP - RTA - N0001 块）
+
 
 
 工具使用说明
