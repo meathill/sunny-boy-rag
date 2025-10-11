@@ -180,7 +180,10 @@ export function saveSectionRelations(db, relations) {
     VALUES (@sectionId, @relatedSectionId)
     ON CONFLICT(section_id, related_section_id) DO NOTHING
   `);
-  const tx = db.transaction((rows) => { for (const r of rows) stmt.run(r); });
+  const tx = db.transaction((rows) => { for (const r of rows) stmt.run({
+    sectionId: r.sectionId,
+    relatedSectionId: r.relatedSectionId,
+  }); });
   tx(relations);
 }
 

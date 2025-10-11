@@ -207,18 +207,35 @@ export function enrichSectionsForDb(sections, parts) {
 export function buildSectionRelations(parts, sections) {
   const rels = [];
   const re = /\bSection\s+(\d+)\s+(\d+)\s+(\d+)\b/gi;
-  const codeToId = new Map(sections.map(s => [s.section, s.id]));
   for (const p of parts) {
     if (p.partNo !== 1) continue;
-    const subs = buildSubsections([p]);
-    const sec12 = subs.find(it => it.level2Code === '1.2');
-    const text = sec12 ? sec12.text : '';
+    const s = p.text || '';
+    const mStart = s.match(/^\s*1\s*\.\s*2(?!\d)\b/m);
+    if (!mStart || mStart.index === undefined) continue;
+    const start = mStart.index;
+    const tail = s.slice(start + 1);
+    const candidates = [];
+    const mNext = tail.match(/^\s*1\s*\.\s*3(?!\d)\b/m);
+    if (mNext && mNext.index !== undefined) candidates.push(start + 1 + mNext.index);
+    const mPart2 = tail.match(/^\s*PART\s+2\b/m);
+    if (mPart2 && mPart2.index !== undefined) candidates.push(start + 1 + mPart2.index);
+    const mEos = s.match(/\n?\s*END OF SECTION\b[\s\S]*$/i);
+    if (mEos && mEos.index !== undefined) candidates.push(mEos.index);
+    const end = candidates.length ? Math.min(...candidates.filter(i => i > start)) : s.length;
+    const text = s.slice(start, end);
+
     let m;
     while ((m = re.exec(text)) !== null) {
       const code = `${m[1]} ${m[2]} ${m[3]}`;
-      const target = codeToId.get(code);
-      if (target && target !== p.sectionId) rels.push({ sectionId: p.sectionId, relatedSectionId: target });
+      if (code !== p.sectionId) rels.push({ sectionId: p.sectionId, relatedSectionId: code });
     }
   }
-  return rels;
+  // dedupe
+  const uniq = new Set();
+  return rels.filter(r => {
+    const k = r.sectionId + '->' + r.relatedSectionId;
+    if (uniq.has(k)) return false;
+    uniq.add(k);
+    return true;
+  });
 }
