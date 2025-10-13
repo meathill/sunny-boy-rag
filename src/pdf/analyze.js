@@ -111,26 +111,88 @@ export function buildParts(sections) {
 
 export function buildSubsections(parts) {
   const items = [];
-  const re = /^\s*(\d{1,2}(?:\.\d{1,2}){0,2})\b\s*(.*)$/;
+  // Match up to 4 levels: X.Y.Z.W
+  const re = /^\s*(\d{1,2}(?:\.\d{1,2}){0,3})\b\s*(.*)$/;
+
+  // Check if any part has explicit PART markers (meaning it's a structured PDF)
+  const hasExplicitParts = parts.some(p => {
+    const lines = p.text.split(/\r?\n/);
+    return lines.some(line => /^\s*PART\s+[123]/i.test(line));
+  });
+
   for (const p of parts) {
+    // Only filter Part 1 if we have explicitly marked Parts
+    // Otherwise (simple text files), include everything
+    if (hasExplicitParts && p.partNo < 2) continue;
+
     const lines = p.text.split(/\r?\n/);
     const marks = [];
     for (let i = 0; i < lines.length; i++) {
       const m = lines[i].match(re);
-      if (m) marks.push({ index: i, code: m[1], title: (m[2]||'').trim() });
+      if (m) {
+        // Clean title: remove leading dots, spaces, and trim
+        const rawTitle = (m[2] || '').trim();
+        const cleanTitle = rawTitle.replace(/^[\.\s]+/, '').trim();
+        marks.push({ index: i, code: m[1], title: cleanTitle });
+      }
     }
     if (marks.length === 0) {
-      items.push({ ...p, partNo: p.partNo, sectionLocal: null, level2Code: null, level3Code: null });
+      items.push({
+        ...p,
+        partNo: p.partNo,
+        sectionLocal: null,
+        level2Code: null,
+        level3Code: null,
+        level2Title: null,
+        level3Title: null
+      });
       continue;
     }
-    for (let i = 0; i < marks.length; i++) {
-      const cur = marks[i];
-      const next = marks[i+1];
-      const slice = lines.slice(cur.index + 1, next ? next.index : lines.length).join('\n').trim();
-      const seg = { sectionId: p.sectionId, partNo: p.partNo, title: p.title, startPage: p.startPage, endPage: p.endPage, text: slice };
+
+    // Only create chunks for level 3 headings (X.Y.Z) not level 4 (X.Y.Z.W)
+    // Level 3 chunks should include all level 4 content beneath them
+    const level3Marks = marks.filter(m => {
+      const parts = m.code.split('.');
+      return parts.length === 3;
+    });
+
+    // If no level 3 marks, fall back to all marks (for simple documents)
+    const targetMarks = level3Marks.length > 0 ? level3Marks : marks;
+
+    for (let i = 0; i < targetMarks.length; i++) {
+      const cur = targetMarks[i];
+      const next = targetMarks[i + 1];
+
+      // Find the index range for this section (including all subsections)
+      const startIdx = cur.index + 1;
+      const endIdx = next ? next.index : lines.length;
+
+      const slice = lines.slice(startIdx, endIdx).join('\n').trim();
+      const seg = {
+        sectionId: p.sectionId,
+        partNo: p.partNo,
+        startPage: p.startPage,
+        endPage: p.endPage,
+        text: slice
+      };
+
       const partsCode = cur.code.split('.');
       seg.level2Code = partsCode.length >= 2 ? partsCode.slice(0,2).join('.') : null;
       seg.level3Code = partsCode.length >= 3 ? partsCode.slice(0,3).join('.') : null;
+
+      // Find level2 title by looking for the matching level 2 heading
+      seg.level2Title = null;
+      if (seg.level2Code) {
+        const level2Mark = marks.find(m => m.code === seg.level2Code);
+        seg.level2Title = level2Mark ? level2Mark.title : null;
+      }
+
+      // Level3 title is from the current mark
+      seg.level3Title = cur.title;
+
+      // title should be the level3 title (most specific)
+      seg.title = seg.level3Title || cur.title;
+
       items.push(seg);
     }
   }
@@ -223,14 +285,14 @@ export function buildStdRefs(parts) {
     const eIdx = ends.length ? Math.min(...ends.filter(i => i > sIdx)) : s.length;
     return s.slice(sIdx, eIdx).trim();
   };
-  
+
   // Match line starting with standard ID, capture ID and optional title on same line
   // Support: IEC/EN prefix, DEWA Regulations, short codes like IEC 51
   // Also match lines with just ID and no title (title will be null)
   // Use [ \t]+ instead of \s+ to avoid matching newlines
   // Allow trailing colon after code (e.g., "IEC 337-2:") - strip it from ID
   const lineRe = /^([A-Z]+(?:[ \t]*\/[ \t]*[A-Z]+)*)[ \t]+(Regulations|[A-Z0-9][A-Z0-9\-\/: ]*(?:\d|Regulations)):?(?:[ \t]+([^\n]+))?$/gm;
-  
+
   const normalize = (prefix, rest) => {
     if (!prefix) return rest.replace(/\s+/g, ' ').trim();
     const pfx = prefix.replace(/\s+/g, '').replace(/\//g, '/');
@@ -238,17 +300,17 @@ export function buildStdRefs(parts) {
     r = r.replace(/\s*-\s*/g, '-').replace(/\s*\/\s*/g, '/');
     return `${pfx} ${r}`;
   };
-  
+
   for (const p of parts) {
     if (p.partNo !== 1) continue;
     let block = slice(p.text || '', '1.3', '1.4');
     if (!block) continue;
-    
+
     // Handle multi-standard lines like "IEC 60947-2 / \n BS EN 60898-2 ..."
     // The line with "/" has no title, but shares title with next line
     const lines = block.split('\n');
     const sharedTitleMap = new Map(); // lineIdx => title from next line
-    
+
     // First pass: identify lines ending with "/" and extract next line's title
     for (let i = 0; i < lines.length - 1; i++) {
       if (/\/\s*$/.test(lines[i])) {
@@ -262,43 +324,43 @@ export function buildStdRefs(parts) {
         }
       }
     }
-    
+
     block = lines.join('\n');
-    
+
     const seen = new Set();
     let m;
     lineRe.lastIndex = 0;
     let currentLineIdx = 0;
     let lastMatchEnd = 0;
-    
+
     while ((m = lineRe.exec(block)) !== null) {
       // Calculate which line this match is on
       const textBefore = block.slice(lastMatchEnd, m.index);
       currentLineIdx += (textBefore.match(/\n/g) || []).length;
-      
+
       const prefix = m[1];
       const code = m[2];
       let title = m[3] ? m[3].trim() : null;
-      
+
       // Check if this line should use shared title
       if (!title && sharedTitleMap.has(currentLineIdx)) {
         title = sharedTitleMap.get(currentLineIdx);
       }
-      
+
       const id = normalize(prefix, code);
       if (!refs.has(id)) refs.set(id, { id, title });
       if (!seen.has(id)) {
         relations.push({ sectionId: p.sectionId, referenceId: id });
         seen.add(id);
       }
-      
+
       lastMatchEnd = m.index + m[0].length;
     }
   }
   return { stdRefs: Array.from(refs.values()), relations };
 }
 
-export function buildSectionRelations(parts, sections) {
+export function buildSectionRelations(parts) {
   const rels = [];
   const re = /\bSection\s+(\d+)\s+(\d+)\s+(\d+)\b/gi;
   for (const p of parts) {
@@ -337,7 +399,7 @@ export function buildSectionRelations(parts, sections) {
 export function buildDefinitions(parts) {
   const defs = new Map();
   const relations = [];
-  
+
   const slice = (txt, start, end) => {
     const s = txt || '';
     const startRe = new RegExp('^\\s*' + start.replace('.', '\\s*\\.\\s*') + '(?!\\d)\\b', 'm');
@@ -353,7 +415,7 @@ export function buildDefinitions(parts) {
     const eIdx = ends.length ? Math.min(...ends.filter(i => i > sIdx)) : s.length;
     return s.slice(sIdx, eIdx).trim();
   };
-  
+
   // Helper: does token look like an abbreviation?
   // Abbreviations are typically: all uppercase, or contain (MV), or short AND uppercase
   const isAbbrToken = (token) => {
@@ -362,35 +424,35 @@ export function buildDefinitions(parts) {
     if (token.length > 3 && /^[A-Z]+$/.test(token)) return true; // KEMA, etc. (longer all-uppercase)
     return false;
   };
-  
+
   // Match lines with format: ABBREVIATION   Definition text
   // All tokens separated by 3+ spaces in PDF
   // Special case: "O - C - O" has space-hyphen-space within, treat as single token
-  // Strategy: 
+  // Strategy:
   //   - First token is always part of abbreviation, may contain " - " pattern
   //   - Second token is part of abbreviation IF it looks like one (short, uppercase, or has parens)
   //   - Otherwise, second token starts the definition
   // Definition must have at least 2 words
   // Token pattern: allows "X - Y - Z" format by matching sequences of chars separated by " - "
   const lineRe = /^([A-Za-z][A-Za-z0-9\/\-\(\)]*(?:\s+-\s+[A-Za-z0-9\/\-\(\)]+)*)(?:\s{3,}([A-Za-z0-9\/\-\(\)]+(?:\s+-\s+[A-Za-z0-9\/\-\(\)]+)*))?\s{3,}(.+?)$/gm;
-  
+
   for (const p of parts) {
     if (p.partNo !== 1) continue;
     let block = slice(p.text || '', '1.6', '1.7');
     if (!block) continue;
-    
+
     const seen = new Set();
     let m;
     lineRe.lastIndex = 0;
-    
+
     while ((m = lineRe.exec(block)) !== null) {
       const token1 = m[1].trim();
       const token2 = m[2] ? m[2].trim() : '';
       let restText = m[3].trim();
-      
+
       let abbr;
       let definition;
-      
+
       if (token2 && isAbbrToken(token2)) {
         // token2 is part of abbreviation
         abbr = `${token1} ${token2}`;
@@ -404,10 +466,10 @@ export function buildDefinitions(parts) {
         abbr = token1;
         definition = restText;
       }
-      
+
       // Normalize definition spacing
       definition = definition.replace(/\s+/g, ' ');
-      
+
       if (!defs.has(abbr)) {
         defs.set(abbr, { id: abbr, definition });
       }
@@ -417,6 +479,6 @@ export function buildDefinitions(parts) {
       }
     }
   }
-  
+
   return { definitions: Array.from(defs.values()), relations };
 }

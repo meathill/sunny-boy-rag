@@ -34,6 +34,8 @@ export function initDb(path = DEFAULT_PATH) {
       part_no INTEGER,
       level2_code TEXT,
       level3_code TEXT,
+      level2_title TEXT,
+      level3_title TEXT,
       title TEXT,
       start_page INTEGER,
       end_page INTEGER,
@@ -92,14 +94,16 @@ export function initDb(path = DEFAULT_PATH) {
 
 export function saveChunks(db, chunks) {
   const stmt = db.prepare(`
-    INSERT INTO chunks (id, source_id, section_id, part_no, level2_code, level3_code, title, start_page, end_page, text)
-    VALUES (@id, @sourceId, @sectionId, @partNo, @level2Code, @level3Code, @title, @startPage, @endPage, @text)
+    INSERT INTO chunks (id, source_id, section_id, part_no, level2_code, level3_code, level2_title, level3_title, title, start_page, end_page, text)
+    VALUES (@id, @sourceId, @sectionId, @partNo, @level2Code, @level3Code, @level2Title, @level3Title, @title, @startPage, @endPage, @text)
     ON CONFLICT(id) DO UPDATE SET
       source_id = excluded.source_id,
       section_id = excluded.section_id,
       part_no = excluded.part_no,
       level2_code = excluded.level2_code,
       level3_code = excluded.level3_code,
+      level2_title = excluded.level2_title,
+      level3_title = excluded.level3_title,
       title = excluded.title,
       start_page = excluded.start_page,
       end_page = excluded.end_page,
@@ -110,6 +114,8 @@ export function saveChunks(db, chunks) {
     partNo: r.partNo ?? null,
     level2Code: r.level2Code ?? null,
     level3Code: r.level3Code ?? null,
+    level2Title: r.level2Title ?? null,
+    level3Title: r.level3Title ?? null,
   }); });
   tx(chunks);
 }

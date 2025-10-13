@@ -28,9 +28,15 @@ describe('ingest shebang', { skip: !hasDb }, () => {
     const dbPath = path.join(dir, 'data.sqlite');
     await fs.writeFile(file, '1. 总则\n正文A\n1.1 范围\n正文B\n2. 定义\n正文C');
 
-    const {stdout} = await execBin('./src/cli/ingest.js', [file, '--max', '200'], { env: { ...process.env, SUNNY_SQLITE: dbPath } });
+    // Use absolute path and change cwd to avoid race condition on last-ingest.json
+    const scriptPath = path.join(process.cwd(), 'src', 'cli', 'ingest.js');
+    const {stdout} = await execBin(scriptPath, [file, '--max', '200'], { 
+      cwd: dir,
+      env: { ...process.env, SUNNY_SQLITE: dbPath } 
+    });
     assert.equal(stdout.trim(), 'done');
-    const out = JSON.parse(await fs.readFile('last-ingest.json', 'utf8'));
+    const jsonPath = path.join(dir, 'last-ingest.json');
+    const out = JSON.parse(await fs.readFile(jsonPath, 'utf8'));
     assert.ok(out.chunks.length >= 1);
 
     const { default: Database } = await import('better-sqlite3');

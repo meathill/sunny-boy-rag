@@ -37,7 +37,7 @@
 - 章节识别：正则 `^\s*(\d+(?:\.\d+){0,3})[.)]?\s+(.{2,80})$`；detectHeadings 返回 {page,line,section,title}。
 - 分段构建：buildSections 数字序排序；段 id 模板 `sec: ${section}, ${title}`；无标题时添加 `sec:document`。
 - 引用提取：先将连字符两侧空格规整为 `-`，再用模式 `[A-Z]{2,}-\d{2,}|[A-Z]{2,}\d{2,}|[A-Z]{2,}-\d{3,}[A-Z]?`。
-- 切片：chunkSections 默认 maxChars=4000, minChars=1500（无重叠）；末尾过小切片会并入前一块；chunk.id 使用 sha1 截断。按章节/段落为主进行切分。
+- 切片：chunkSections 默认 maxChars=4000, minChars=1500（无重叠）；末尾过小切片会并入前一块；chunk.id 使用 sha1 截断。按章节/段落为主进行切分，**重要**：对于超长section（>maxChars），智能地在4级标题（X.Y.Z.W）边界处切分，确保不会把一个小节切成两段，保持小节完整性。如果没有4级标题，则退回到字符长度切分。
 - CLI：`src/cli/ingest.js` 将 parsePdf + buildSections + chunkSections 串联，输出 {meta,sections,chunks} 到 stdout；参数：--max, --pages, --db；环境变量通过 dotenv 自动加载（.env），数据库路径覆盖顺序：--db > SUNNY_SQLITE > :memory:。
 - DB API：saveSections(db, sourceId, sections), saveDefinitions(db, definitions), saveSectionDefinitionRelations(db, relations), getChunk(db, id), getChunksBySource(db, sourceId, {limit, offset}), getDocuments(db), getDocument(db, sourceId), refreshDocument(db, sourceId, {pageCount, processedPages}).
 - Schema：sections(id=section_code 'X Y Z'/title/start_page/end_page/source_id, overview, p14, p15, p17, p18)、parts(section_id,part_no,title)、chunks(section_id, part_no, level2_code, level3_code, text)、documents(汇总)、std_refs(id, title)、section_std_refs_relations、definitions(id=abbreviation, definition)、section_definition_relations（拆分阶段完成）。
