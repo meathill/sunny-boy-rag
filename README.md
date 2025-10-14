@@ -27,7 +27,7 @@ Sunny boy RAG
 进度
 ---
 
-- 阶段一（读取+分析+切片）已完成：
+- ✅ **阶段一：PDF解析与分片**（已完成）
   - 支持解析真实 PDF（pdfjs-dist），文本文件将回退为单页解析
   - 自动检测"Section X Y Z"字面标识并聚合为 Section
   - 支持 Part 1/2/3 识别，从 Part 1 提取结构化数据：
@@ -36,14 +36,36 @@ Sunny boy RAG
     - 1.6 Definitions：提取缩写和定义（AC、DEWA、ATS/ATC 等）
   - 支持按字符长度切片（默认无重叠，按章节/段落分片）
   - 提供 CLI（ingest）默认写入 last-ingest.json，并写入 sqlite（--db > SUNNY_SQLITE > 内存），stdout 仅打印 done/failed
+  
+- ✅ **阶段二：AI智能解析**（已完成）
+  - 实现AI驱动的requirements提取系统
+  - 四大类型要求自动提取：
+    - **标准合规要求**：IEC、ISO、BS等国际标准引用
+    - **技术规格**：电气参数、环境条件、保护等级等
+    - **设计与安装要求**：物理设计、安装规范、配置要求
+    - **测试与验收要求**：FAT/SAT、型式试验、文档交付
+  - 支持多AI提供商（OpenAI、Anthropic、Mock）
+  - 提供parse CLI工具进行批量处理
+    - 支持 --section-id 参数按Section精准处理（节省API消耗）
+  - 提供query CLI工具查询Section要求（支持递归查询关联Section）
+  - 完整的处理状态跟踪和错误重试机制
+  
+- 🚧 **阶段三：Web UI**（规划中）
+  - 产品规范查询界面
+  - 可视化展示requirements
+  - 支持导出和分享
+
 - 测试：包含单元测试、真实 PDF（demo.pdf）的 e2e 测试；数据库相关测试在本地可用原生绑定时执行
   - Section 按"Section X Y Z"识别，id 即"X Y Z"；Part 1 中切出 overview（至 1.2 前）及 1.4/1.5/1.7/1.8 段
   - 从 Part 1 的 1.2/1.3/1.6 分别抽取 section_relations、std_refs、definitions 及关联表
   - 清洗页眉页脚（含 Pages: N of M、DMBLP - RTA - N0001 块）
+  - AI解析功能完整测试覆盖（MockAI、数据库操作、查询功能）
 
 
 
 工具使用说明
 ---
 
-[使用说明（Usage）](docs/usage.md)
+- [基础使用说明（Usage）](docs/usage.md)
+- [AI解析系统实现文档](docs/ai-implementation.md)
+- [开发笔记（Dev Notes）](docs/dev-notes.md)

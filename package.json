@@ -1,17 +1,19 @@
 {
   "name": "sunny-boy",
-  "version": "1.0.0",
-  "description": "Sunny boy RAG - Stage 1: PDF read/analyze/chunk",
+  "version": "0.2.0",
+  "description": "Sunny boy RAG - Technical specification extraction system with AI-powered parsing",
   "main": "index.js",
   "scripts": {
     "test": "node --test",
     "test:watch": "node --test --watch",
-    "ingest": "node src/cli/ingest.js"
+    "ingest": "node src/cli/ingest.js",
+    "parse": "node src/cli/parse.js",
+    "query": "node src/cli/query.js"
   },
-  "keywords": [],
+  "keywords": ["rag", "pdf", "ai", "technical-specs", "compliance"],
   "author": "",
   "license": "ISC",
-  "packageManager": "pnpm@10.18.0",
+  "packageManager": "pnpm@10.18.3",
   "type": "module",
   "engines": {
     "node": ">= 22.20.0"

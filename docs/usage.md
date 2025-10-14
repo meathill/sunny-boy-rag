@@ -36,7 +36,76 @@
   # 输出文件：last-ingest.json
   # 同时写入数据库（如配置了 SUNNY_SQLITE）
 
-## 查询子命令
+## 步骤二：AI智能解析（NEW）
+
+### 环境配置
+```bash
+# .env 文件
+SUNNY_SQLITE=./data.sqlite
+
+# AI提供商配置（可选，默认使用Mock进行测试）
+AI_PROVIDER=openai      # 或 anthropic
+AI_API_KEY=your-api-key
+AI_MODEL=gpt-4-turbo-preview  # 可选
+```
+
+### 解析命令（parse）
+
+从Part 2/3的chunks中提取结构化requirements：
+
+```bash
+# 查看帮助
+./src/cli/parse.js --help
+
+# 查看处理统计
+./src/cli/parse.js stats
+
+# 处理前10个未处理的chunks
+./src/cli/parse.js parse --limit 10
+
+# 处理特定Section的所有chunks（推荐用于测试短Section）
+./src/cli/parse.js parse --section-id "26 24 13"
+
+# 使用真实OpenAI API处理
+AI_PROVIDER=openai AI_API_KEY=sk-xxx ./src/cli/parse.js parse --limit 5
+
+# 调整并发数（默认3）
+./src/cli/parse.js parse --concurrency 5 --limit 20
+```
+
+**提取的数据类型：**
+- **标准合规要求**（compliance_requirements）：IEC、ISO、BS等标准引用和认证要求
+- **技术规格**（technical_specs）：电气参数、环境条件、保护等级等
+- **设计与安装要求**（design_requirements）：物理设计、安装规范、配置要求
+- **测试与验收要求**（testing_requirements）：FAT/SAT、型式试验、文档交付
+
+### 查询命令（query）
+
+查询Section的所有requirements：
+
+```bash
+# 查看帮助
+./src/cli/query.js --help
+
+# 查询特定Section（JSON格式）
+./src/cli/query.js "26 24 13"
+
+# 查询并包含关联Section（文本格式）
+./src/cli/query.js "26 24 13" --recursive --format text
+
+# 查询特定数据库
+./src/cli/query.js "26 25 13" --db ./data.sqlite
+```
+
+**查询输出包含：**
+- 直接要求（该Section的所有requirements）
+- 关联Sections（通过section_relations）
+- 递归模式下包含所有关联Section的requirements
+
+详细使用说明请参考：[AI解析系统实现文档](ai-implementation.md)
+
+## 查询子命令（ingest）
+
 - 列表：pnpm ingest list [--source <file>] [--limit N] [--offset N] [--db path]
   - 结合 SUNNY_SQLITE：直接执行 pnpm ingest list 即从默认数据库读取
 - 单条：pnpm ingest get <id> [--db path]
@@ -56,6 +125,8 @@
   }
 
 ## 数据库结构
+
+### 基础表（阶段一）
 - sections：存储 Section 信息（id=Section Code 'X Y Z'），包含 overview、p14/p15/p17/p18 等关键切片
 - std_refs：存储技术规范引用（IEC、BS、DEWA 等）
 - definitions：存储缩写定义（AC、DEWA、ATS/ATC 等）
@@ -63,3 +134,10 @@
 - section_std_refs_relations：Section 与技术规范的关联
 - section_definition_relations：Section 与缩写定义的关联
 - parts/chunks/documents：其他辅助表
+
+### AI解析表（阶段二）
+- compliance_requirements：标准合规要求
+- technical_specs：技术规格
+- design_requirements：设计与安装要求
+- testing_requirements：测试与验收要求
+- ai_processing_status：AI处理状态跟踪

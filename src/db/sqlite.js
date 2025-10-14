@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { createAITables } from './ai-schema.js';
 const DEFAULT_PATH = process.env.SUNNY_SQLITE || ':memory:';
 
 export function initDb(path = DEFAULT_PATH) {
@@ -74,21 +75,16 @@ export function initDb(path = DEFAULT_PATH) {
       PRIMARY KEY(section_id, related_section_id)
     );
 
-    CREATE TABLE IF NOT EXISTS documents (
-      source_id TEXT PRIMARY KEY,
-      page_count INTEGER,
-      processed_pages INTEGER DEFAULT 0,
-      chunk_count INTEGER DEFAULT 0,
-      updated_at TEXT,
-      created_at TEXT DEFAULT (datetime('now'))
-    );
-
     CREATE TABLE IF NOT EXISTS section_definition_relations (
       section_id TEXT NOT NULL,
       definition_id TEXT NOT NULL,
       PRIMARY KEY(section_id, definition_id)
     );
   `);
+  
+  // Create AI-related tables
+  createAITables(db);
+  
   return db;
 }
 
@@ -110,12 +106,18 @@ export function saveChunks(db, chunks) {
       text = excluded.text
   `);
   const tx = db.transaction((rows) => { for (const r of rows) stmt.run({
-    ...r,
+    id: r.id,
+    sourceId: r.sourceId,
+    sectionId: r.sectionId ?? null,
     partNo: r.partNo ?? null,
     level2Code: r.level2Code ?? null,
     level3Code: r.level3Code ?? null,
     level2Title: r.level2Title ?? null,
     level3Title: r.level3Title ?? null,
+    title: r.title ?? null,
+    startPage: r.startPage ?? null,
+    endPage: r.endPage ?? null,
+    text: r.text ?? '',
   }); });
   tx(chunks);
 }
@@ -251,4 +253,224 @@ export function saveSectionDefinitionRelations(db, relations) {
   `);
   const tx = db.transaction((rows) => { for (const r of rows) stmt.run(r); });
   tx(relations);
+}
+
+// AI Parsing Related Functions
+
+export function saveComplianceRequirements(db, requirements) {
+  const stmt = db.prepare(`
+    INSERT INTO compliance_requirements (
+      section_id, chunk_id, std_ref_id, requirement_text, 
+      applies_to, is_mandatory, requirement_type
+    )
+    VALUES (
+      @sectionId, @chunkId, @stdRefId, @requirementText,
+      @appliesTo, @isMandatory, @requirementType
+    )
+  `);
+  const tx = db.transaction((rows) => { 
+    for (const r of rows) stmt.run({
+      sectionId: r.sectionId,
+      chunkId: r.chunkId,
+      stdRefId: r.stdRefId ?? null,
+      requirementText: r.requirementText,
+      appliesTo: r.appliesTo ?? null,
+      isMandatory: r.isMandatory ?? 1,
+      requirementType: r.requirementType ?? null,
+    }); 
+  });
+  tx(requirements);
+}
+
+export function saveTechnicalSpecs(db, specs) {
+  const stmt = db.prepare(`
+    INSERT INTO technical_specs (
+      section_id, chunk_id, spec_category, parameter_name,
+      value, unit, test_standard, requirement_text, applies_to
+    )
+    VALUES (
+      @sectionId, @chunkId, @specCategory, @parameterName,
+      @value, @unit, @testStandard, @requirementText, @appliesTo
+    )
+  `);
+  const tx = db.transaction((rows) => { 
+    for (const r of rows) stmt.run({
+      sectionId: r.sectionId,
+      chunkId: r.chunkId,
+      specCategory: r.specCategory ?? null,
+      parameterName: r.parameterName ?? null,
+      value: r.value ?? null,
+      unit: r.unit ?? null,
+      testStandard: r.testStandard ?? null,
+      requirementText: r.requirementText,
+      appliesTo: r.appliesTo ?? null,
+    }); 
+  });
+  tx(specs);
+}
+
+export function saveDesignRequirements(db, requirements) {
+  const stmt = db.prepare(`
+    INSERT INTO design_requirements (
+      section_id, chunk_id, requirement_category, requirement_text,
+      applies_to, is_mandatory
+    )
+    VALUES (
+      @sectionId, @chunkId, @requirementCategory, @requirementText,
+      @appliesTo, @isMandatory
+    )
+  `);
+  const tx = db.transaction((rows) => { 
+    for (const r of rows) stmt.run({
+      sectionId: r.sectionId,
+      chunkId: r.chunkId,
+      requirementCategory: r.requirementCategory ?? null,
+      requirementText: r.requirementText,
+      appliesTo: r.appliesTo ?? null,
+      isMandatory: r.isMandatory ?? 1,
+    }); 
+  });
+  tx(requirements);
+}
+
+export function saveTestingRequirements(db, requirements) {
+  const stmt = db.prepare(`
+    INSERT INTO testing_requirements (
+      section_id, chunk_id, test_type, requirement_text,
+      applies_to, is_mandatory
+    )
+    VALUES (
+      @sectionId, @chunkId, @testType, @requirementText,
+      @appliesTo, @isMandatory
+    )
+  `);
+  const tx = db.transaction((rows) => { 
+    for (const r of rows) stmt.run({
+      sectionId: r.sectionId,
+      chunkId: r.chunkId,
+      testType: r.testType ?? null,
+      requirementText: r.requirementText,
+      appliesTo: r.appliesTo ?? null,
+      isMandatory: r.isMandatory ?? 1,
+    }); 
+  });
+  tx(requirements);
+}
+
+export function updateAIProcessingStatus(db, chunkId, status) {
+  db.prepare(`
+    INSERT INTO ai_processing_status (
+      chunk_id, processed, processing_started_at, 
+      processing_completed_at, error_message, retry_count
+    )
+    VALUES (@chunkId, @processed, @startedAt, @completedAt, @errorMessage, @retryCount)
+    ON CONFLICT(chunk_id) DO UPDATE SET
+      processed = excluded.processed,
+      processing_started_at = COALESCE(excluded.processing_started_at, ai_processing_status.processing_started_at),
+      processing_completed_at = excluded.processing_completed_at,
+      error_message = excluded.error_message,
+      retry_count = excluded.retry_count
+  `).run({
+    chunkId,
+    processed: status.processed ?? 0,
+    startedAt: status.startedAt ?? null,
+    completedAt: status.completedAt ?? null,
+    errorMessage: status.errorMessage ?? null,
+    retryCount: status.retryCount ?? 0,
+  });
+}
+
+export function getUnprocessedChunks(db, { limit = 100, offset = 0, sectionId = null } = {}) {
+  const whereClauses = [
+    'c.part_no IN (2, 3)',
+    '(aps.processed IS NULL OR aps.processed = 0)'
+  ];
+  
+  const params = [];
+  
+  if (sectionId) {
+    whereClauses.push('c.section_id = ?');
+    params.push(sectionId);
+  }
+  
+  params.push(limit, offset);
+  
+  return db.prepare(`
+    SELECT c.* FROM chunks c
+    LEFT JOIN ai_processing_status aps ON c.id = aps.chunk_id
+    WHERE ${whereClauses.join(' AND ')}
+    ORDER BY c.section_id, c.part_no, c.level2_code, c.level3_code
+    LIMIT ? OFFSET ?
+  `).all(...params);
+}
+
+export function getProcessingStats(db) {
+  return db.prepare(`
+    SELECT 
+      COUNT(*) as total_chunks,
+      SUM(CASE WHEN aps.processed = 1 THEN 1 ELSE 0 END) as processed_chunks,
+      SUM(CASE WHEN aps.error_message IS NOT NULL THEN 1 ELSE 0 END) as error_chunks
+    FROM chunks c
+    LEFT JOIN ai_processing_status aps ON c.id = aps.chunk_id
+    WHERE c.part_no IN (2, 3)
+  `).get();
+}
+
+export function getSectionRequirements(db, sectionId) {
+  const compliance = db.prepare(`
+    SELECT cr.*, sr.title as std_ref_title
+    FROM compliance_requirements cr
+    LEFT JOIN std_refs sr ON cr.std_ref_id = sr.id
+    WHERE cr.section_id = ?
+    ORDER BY cr.id
+  `).all(sectionId);
+
+  const technical = db.prepare(`
+    SELECT * FROM technical_specs
+    WHERE section_id = ?
+    ORDER BY spec_category, parameter_name
+  `).all(sectionId);
+
+  const design = db.prepare(`
+    SELECT * FROM design_requirements
+    WHERE section_id = ?
+    ORDER BY requirement_category
+  `).all(sectionId);
+
+  const testing = db.prepare(`
+    SELECT * FROM testing_requirements
+    WHERE section_id = ?
+    ORDER BY test_type
+  `).all(sectionId);
+
+  const relatedSections = db.prepare(`
+    SELECT related_section_id, s.title
+    FROM section_relations sr
+    LEFT JOIN sections s ON sr.related_section_id = s.id
+    WHERE sr.section_id = ?
+  `).all(sectionId);
+
+  return {
+    sectionId,
+    compliance,
+    technical,
+    design,
+    testing,
+    relatedSections,
+  };
+}
+
+export function getAllSectionRequirementsRecursive(db, sectionId, visited = new Set()) {
+  if (visited.has(sectionId)) return {};
+  visited.add(sectionId);
+
+  const direct = getSectionRequirements(db, sectionId);
+  const result = { ...direct, indirect: {} };
+
+  for (const rel of direct.relatedSections) {
+    const relatedReqs = getAllSectionRequirementsRecursive(db, rel.related_section_id, visited);
+    result.indirect[rel.related_section_id] = relatedReqs;
+  }
+
+  return result;
 }

@@ -1,5 +1,7 @@
 # 开发笔记
 
+## PDF解析与分片（阶段一）
+
 - Section 检测：仅以"Section X Y Z"为边界，section id="X Y Z"。
 - Part 识别：支持"PART 1./PART 1 – …"等变体。
 - Part 1 切片：
@@ -29,8 +31,145 @@
 - DB：sections.id=Section Code（X Y Z），去掉 section_code 字段；保存 overview/p14/p15/p17/p18 原文切片；section_relations、section_std_refs_relations、section_definition_relations 唯一约束。
 - 测试：新增 demo.pdf e2e 覆盖切分、清洗、Section/Std/Definition关联、边界情况（共享title、冒号清理、斜杠缩写等）；回归防止 1.2/页脚混入。
 
+## AI智能解析（阶段二）
+
+### 架构设计
+
+- **目标**：将Part 2/3的自然语言技术规范提取为结构化数据
+- **四大数据类型**：
+  1. compliance_requirements：标准合规（IEC/ISO/BS等）
+  2. technical_specs：技术规格（电气/环境/保护参数）
+  3. design_requirements：设计与安装要求
+  4. testing_requirements：测试与验收要求
+
+### AI提示词策略
+
+- **标准合规提取**：
+  - 识别标准ID模式（IEC/BS/EN/ISO/DEWA等）
+  - 区分强制性（shall/must）vs推荐性（should）
+  - 分类：standard_compliance, certification, accreditation, test_method
+  - 自动补充std_refs表和section_std_refs_relations关系
+
+- **技术规格提取**：
+  - 分类：electrical, mechanical, environmental, protection, performance, material
+  - 提取参数名、数值、单位
+  - 关联测试标准（如IEC 62262）
+  - 适用对象识别（applies_to字段）
+
+- **设计要求提取**：
+  - 分类：design, construction, installation, configuration, safety, accessibility
+  - 提取完整要求文本
+  - 识别强制性和适用对象
+
+- **测试要求提取**：
+  - 分类：FAT, SAT, type_test, routine_test, inspection, documentation, training, warranty
+  - 提取测试流程和验收标准
+
+### AI客户端实现
+
+- **支持多提供商**：
+  - OpenAI（GPT-4/3.5）：生产环境首选
+  - Anthropic（Claude）：备选方案
+  - MockAIClient：开发测试用，基于正则匹配
+
+- **配置方式**：
+  - 环境变量：AI_PROVIDER, AI_API_KEY, AI_MODEL
+  - createAIClient工厂函数自动选择
+  - 响应解析支持markdown代码块
+
+- **错误处理**：
+  - parseAIResponse容错处理
+  - 支持空结果返回
+  - 详细错误日志
+
+### 批处理系统
+
+- **并发控制**：
+  - 默认concurrency=3（避免API限流）
+  - 可配置并发数
+  - 批次处理避免内存溢出
+
+- **进度跟踪**：
+  - ai_processing_status表记录状态
+  - 支持onProgress/onError回调
+  - 错误重试机制（retry_count字段）
+
+- **增量处理**：
+  - getUnprocessedChunks自动筛选Part 2/3未处理chunks
+  - 支持--section-id参数过滤特定Section
+  - 支持断点续传
+  - 可重新处理（改进prompt后）
+
+### 查询系统
+
+- **直接查询**：getSectionRequirements
+  - 返回所有四类requirements
+  - 包含std_refs的title join
+  - 按category分组
+
+- **递归查询**：getAllSectionRequirementsRecursive
+  - 通过section_relations递归查询
+  - 防止循环引用（visited set）
+  - 返回嵌套结构（direct + indirect）
+
+- **输出格式**：
+  - JSON：结构化数据
+  - Text：人类可读格式
+  - 支持--recursive模式
+
+### CLI工具
+
+- **parse.js**：AI解析命令
+  - stats子命令：查看处理统计
+  - parse子命令：批量处理chunks
+  - 参数：--limit, --offset, --concurrency, --section-id, --db
+  - --section-id：仅处理特定Section的chunks（格式："X Y Z"），便于测试短Section，节省API消耗
+  - 自动保存提取结果到数据库
+  - 实时进度输出（stderr）
+
+- **query.js**：查询命令
+  - 支持JSON/text输出格式
+  - --recursive模式包含关联Section
+  - --db指定数据库路径
+  - 文本格式分category展示
+
+### 数据库设计
+
+- **无外键约束**：避免顺序依赖问题
+- **索引优化**：
+  - section_id索引（所有requirements表）
+  - chunk_id索引
+  - spec_category/test_type等分类索引
+
+- **处理状态表**：ai_processing_status
+  - chunk_id主键
+  - processed标志
+  - 时间戳（started/completed）
+  - error_message和retry_count
+
+### 性能优化
+
+- **并行提取**：4个提取器并行调用（Promise.all）
+- **批量写入**：transaction保证原子性
+- **索引加速**：合理的索引设计
+- **增量处理**：只处理未处理的chunks
+
+### 测试覆盖
+
+- **单元测试**：
+  - MockAIClient各提取器
+  - parseAIResponse边界情况
+  - processChunk综合测试
+
+- **集成测试**：
+  - AI schema创建
+  - 各save函数
+  - 查询函数（直接+递归）
+  - 处理状态跟踪
+  - 幂等性测试（可重处理）
 
 ## 技术决策与约定
+
 - PDF 解析：使用 pdfjs-dist legacy/build；必须传入 Uint8Array（不要直接传 Buffer）。
 - 非 PDF 回退：parsePdf 在非 %PDF 开头时按单页文本处理，便于调试与测试稳定。
 - 分页限制：parsePdf(input, {maxPages}) 支持仅解析前 N 页，用于 e2e 与性能验证。
@@ -39,13 +178,17 @@
 - 引用提取：先将连字符两侧空格规整为 `-`，再用模式 `[A-Z]{2,}-\d{2,}|[A-Z]{2,}\d{2,}|[A-Z]{2,}-\d{3,}[A-Z]?`。
 - 切片：chunkSections 默认 maxChars=4000, minChars=1500（无重叠）；末尾过小切片会并入前一块；chunk.id 使用 sha1 截断。按章节/段落为主进行切分，**重要**：对于超长section（>maxChars），智能地在4级标题（X.Y.Z.W）边界处切分，确保不会把一个小节切成两段，保持小节完整性。如果没有4级标题，则退回到字符长度切分。
 - CLI：`src/cli/ingest.js` 将 parsePdf + buildSections + chunkSections 串联，输出 {meta,sections,chunks} 到 stdout；参数：--max, --pages, --db；环境变量通过 dotenv 自动加载（.env），数据库路径覆盖顺序：--db > SUNNY_SQLITE > :memory:。
-- DB API：saveSections(db, sourceId, sections), saveDefinitions(db, definitions), saveSectionDefinitionRelations(db, relations), getChunk(db, id), getChunksBySource(db, sourceId, {limit, offset}), getDocuments(db), getDocument(db, sourceId), refreshDocument(db, sourceId, {pageCount, processedPages}).
-- Schema：sections(id=section_code 'X Y Z'/title/start_page/end_page/source_id, overview, p14, p15, p17, p18)、parts(section_id,part_no,title)、chunks(section_id, part_no, level2_code, level3_code, text)、documents(汇总)、std_refs(id, title)、section_std_refs_relations、definitions(id=abbreviation, definition)、section_definition_relations（拆分阶段完成）。
+- AI处理：parse.js独立CLI，从chunks表读取Part 2/3，调用AI提取，写入4个requirements表；默认MockAI，可配置OpenAI/Anthropic；支持并发控制和错误重试。
+- 查询接口：query.js提供Section级查询，支持递归包含关联Section；输出格式JSON/text可选。
+- DB API：增加saveComplianceRequirements, saveTechnicalSpecs, saveDesignRequirements, saveTestingRequirements, getSectionRequirements, getAllSectionRequirementsRecursive, getUnprocessedChunks, updateAIProcessingStatus, getProcessingStats。
+- Schema：新增compliance_requirements, technical_specs, design_requirements, testing_requirements, ai_processing_status表；无外键约束，使用索引优化查询。
 
 ## 测试策略
+
 - 使用 Node test（node --test）。
 - 单元测试：analyze、chunk、pipeline、ingest 文本输入。
 - e2e：demo.pdf（真实 PDF），使用 --pages 50 控制耗时；断言 sections/std_refs/definitions 提取正确，relations 建立，边界情况处理。
+- AI测试：MockAIClient各提取器功能；数据库save/query操作；处理状态跟踪；幂等性保证。
 - DB 测试：依赖 better-sqlite3 原生绑定；若绑定不可用则自动跳过（CI/本地差异）。
 
 ## 代码风格与运行环境
