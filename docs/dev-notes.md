@@ -36,11 +36,29 @@
 ### 架构设计
 
 - **目标**：将Part 2/3的自然语言技术规范提取为结构化数据
+- **AI技术栈**：
+  - **Vercel AI SDK**：统一的AI接口层，支持多提供商
+  - **Vercel AI Gateway**（可选）：请求路由、成本追踪、速率限制
+  - **支持的提供商**：OpenAI (gpt-5), Anthropic (claude-3-5-sonnet), Google (gemini-2.5-pro)
+  - **环境配置**：通过 .env 灵活配置 AI_PROVIDER, API_KEY, MODEL, GATEWAY_URL
 - **四大数据类型**：
   1. compliance_requirements：标准合规（IEC/ISO/BS等）
   2. technical_specs：技术规格（电气/环境/保护参数）
   3. design_requirements：设计与安装要求
   4. testing_requirements：测试与验收要求
+
+### Vercel AI SDK 集成
+
+- **client.js**：实现 VercelAIClient 类，使用 generateText() API
+  - 支持 OpenAI 和 Anthropic 的统一接口
+  - 可选 Gateway URL 配置（通过 baseURL 参数）
+  - 保留 MockAIClient 用于测试
+- **createAIClient() 工厂函数**：
+  - 根据 AI_PROVIDER 环境变量选择提供商
+  - 自动处理 API Key 和 Model 配置
+  - 支持 AI_GATEWAY_URL 环境变量
+- **测试策略**：默认使用 Mock，真实 API 需显式配置
+- **兼容性**：保留旧版 OpenAIClient/AnthropicClient，标记为 deprecated
 
 ### AI提示词策略
 

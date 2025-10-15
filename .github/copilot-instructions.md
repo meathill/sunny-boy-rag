@@ -12,7 +12,37 @@
 
 - 安装依赖：pnpm install
 - 运行测试：pnpm test
-- 执行步骤一（读取+分析+切片PDF）：pnpm ingest path/to/file.pdf > output.json
+- 执行步骤一（读取+分析+切片PDF）：pnpm ingest path/to/file.pdf
+  - 默认写入 last-ingest.json 和数据库（通过 SUNNY_SQLITE 环境变量配置）
+- 执行步骤二（AI智能解析）：./src/cli/parse.js parse --section-id "X Y Z"
+  - 需要配置 .env 文件中的 AI_PROVIDER 和对应的 API_KEY
+  - 使用 Vercel AI SDK 统一接口，支持 OpenAI 和 Anthropic
+  - 可选配置 AI_GATEWAY_URL 使用 Vercel AI Gateway
+
+AI 集成
+---
+
+本项目使用 **Vercel AI SDK** 进行 AI 集成，主要特性：
+
+- **统一接口**：通过 generateText() API 支持多个 AI 提供商
+- **提供商支持**：
+  - OpenAI (gpt-5 等)
+  - Anthropic (claude-4-5-sonnet 等)
+  - Google/Gemini (gemini-2.5-pro 等)
+  - Mock（用于测试，不消耗 API 配额）
+- **可选 Gateway**：支持 Vercel AI Gateway 进行请求路由、成本追踪、速率限制
+- **环境配置**：
+  ```
+  AI_PROVIDER=openai              # 或 anthropic, google/gemini, mock
+  OPENAI_API_KEY=sk-xxx           # OpenAI API Key
+  ANTHROPIC_API_KEY=sk-ant-xxx    # Anthropic API Key (可选)
+  GOOGLE_API_KEY=xxx              # Google API Key (可选)
+  AI_MODEL=gpt-5                  # 模型名称 (可选)
+  AI_GATEWAY_URL=https://...      # Gateway URL (可选)
+  ```
+- **实现位置**：
+  - `src/ai/client.js`: VercelAIClient 类和 createAIClient 工厂函数
+  - `src/ai/parser.js`: AI 解析逻辑和提示词
 
 测试与校验
 ---

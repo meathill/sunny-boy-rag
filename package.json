@@ -1,7 +1,7 @@
 {
   "name": "sunny-boy",
   "version": "0.2.0",
-  "description": "Sunny boy RAG - Technical specification extraction system with AI-powered parsing",
+  "description": "Sunny boy RAG - Technical specification extraction system with AI-powered parsing using Vercel AI SDK",
   "main": "index.js",
   "scripts": {
     "test": "node --test",
@@ -10,7 +10,14 @@
     "parse": "node src/cli/parse.js",
     "query": "node src/cli/query.js"
   },
-  "keywords": ["rag", "pdf", "ai", "technical-specs", "compliance"],
+  "keywords": [
+    "rag",
+    "pdf",
+    "ai",
+    "technical-specs",
+    "compliance",
+    "vercel-ai-sdk"
+  ],
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.18.3",
@@ -19,6 +26,10 @@
     "node": ">= 22.20.0"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^2.0.28",
+    "@ai-sdk/google": "^2.0.23",
+    "@ai-sdk/openai": "^2.0.52",
+    "ai": "^5.0.70",
     "better-sqlite3": "^12.4.1",
     "dotenv": "^17.2.3",
     "pdfjs-dist": "^5.4.296"

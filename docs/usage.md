@@ -39,15 +39,40 @@
 ## 步骤二：AI智能解析（NEW）
 
 ### 环境配置
+
+系统使用 **Vercel AI SDK** 和 **Vercel AI Gateway** 提供统一的AI接入方式。
+
 ```bash
-# .env 文件
+# .env 文件示例（复制 .env.example 并修改）
 SUNNY_SQLITE=./data.sqlite
 
-# AI提供商配置（可选，默认使用Mock进行测试）
-AI_PROVIDER=openai      # 或 anthropic
-AI_API_KEY=your-api-key
-AI_MODEL=gpt-4-turbo-preview  # 可选
+# AI提供商配置（支持：openai, anthropic, google/gemini, mock）
+AI_PROVIDER=openai
+
+# OpenAI 配置
+OPENAI_API_KEY=sk-your-openai-api-key-here
+# AI_MODEL=gpt-5  # 可选，默认值
+
+# Anthropic 配置（如使用 Claude）
+# ANTHROPIC_API_KEY=sk-ant-your-anthropic-api-key-here
+# AI_MODEL=claude-sonnet-4-5  # 可选
+
+# Google/Gemini 配置（如使用 Gemini）
+# GOOGLE_API_KEY=your-google-api-key-here
+# AI_MODEL=gemini-2.5-pro  # 可选
+
+# Vercel AI Gateway（可选，用于统一管理、成本追踪、速率限制）
+# AI_GATEWAY_URL=https://gateway.ai.cloudflare.com/v1/YOUR_ACCOUNT_ID/YOUR_GATEWAY_ID
+
+# Debug 模式
+DEBUG=1
 ```
+
+**关键特性：**
+- 使用 Vercel AI SDK 统一接口，支持 OpenAI、Anthropic 和 Google/Gemini
+- 可选 Vercel AI Gateway 进行请求路由、成本监控和速率限制
+- Mock 模式用于测试，不消耗 API 配额
+- 灵活的模型配置，支持各提供商的最新模型
 
 ### 解析命令（parse）
 

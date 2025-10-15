@@ -64,7 +64,7 @@ SUNNY_SQLITE=./data.sqlite
 # 使用真实AI服务（可选）
 AI_PROVIDER=openai  # 或 anthropic
 AI_API_KEY=your-api-key
-AI_MODEL=gpt-4-turbo-preview  # 可选
+AI_MODEL=gpt-5  # 可选
 ```
 
 ### 命令行工具
@@ -236,7 +236,7 @@ const mockClient = createAIClient({ provider: 'mock' });
 const openaiClient = createAIClient({
   provider: 'openai',
   apiKey: 'sk-...',
-  model: 'gpt-4-turbo-preview'
+  model: 'gpt-5'
 });
 
 // Anthropic客户端
@@ -396,7 +396,7 @@ A: 系统自动记录处理状态，重新运行parse命令即可继续
 A: 删除该Section的ai_processing_status记录，重新运行parse
 
 ### Q: 支持哪些AI模型？
-A: OpenAI (GPT-3.5/4)、Anthropic (Claude)、或自定义实现
+A: OpenAI (GPT-3.5/4)、Anthropic (Claude)、Google (Gemini)、或自定义实现
 
 ## 未来改进方向
 

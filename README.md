@@ -39,12 +39,16 @@ Sunny boy RAG
   
 - ✅ **阶段二：AI智能解析**（已完成）
   - 实现AI驱动的requirements提取系统
+  - **AI技术栈**：集成 Vercel AI SDK + Vercel AI Gateway
+    - 统一的AI接口，支持 OpenAI、Anthropic 和 Google/Gemini
+    - 可选 AI Gateway 用于请求路由、成本监控、速率限制
+    - Mock模式用于测试，不消耗API配额
   - 四大类型要求自动提取：
     - **标准合规要求**：IEC、ISO、BS等国际标准引用
     - **技术规格**：电气参数、环境条件、保护等级等
     - **设计与安装要求**：物理设计、安装规范、配置要求
     - **测试与验收要求**：FAT/SAT、型式试验、文档交付
-  - 支持多AI提供商（OpenAI、Anthropic、Mock）
+  - 支持多AI提供商（OpenAI、Anthropic、Google/Gemini、Mock）
   - 提供parse CLI工具进行批量处理
     - 支持 --section-id 参数按Section精准处理（节省API消耗）
   - 提供query CLI工具查询Section要求（支持递归查询关联Section）

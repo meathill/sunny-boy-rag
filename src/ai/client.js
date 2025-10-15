@@ -1,7 +1,13 @@
 /**
  * AI client interface and implementations
- * Supports multiple AI providers (OpenAI, Anthropic, local models, etc.)
+ * Using Vercel AI SDK with Gateway support
+ * Supports multiple AI providers (OpenAI, Anthropic, etc.)
  */
+
+import { generateText } from 'ai';
+import { openai } from '@ai-sdk/openai';
+import { anthropic } from '@ai-sdk/anthropic';
+import { google } from '@ai-sdk/google';
 
 /**
  * Base AI client interface
@@ -13,10 +19,86 @@ export class AIClient {
 }
 
 /**
- * OpenAI client implementation
+ * Vercel AI SDK client with Gateway support
+ * Supports OpenAI and Anthropic through unified interface
+ */
+export class VercelAIClient extends AIClient {
+  constructor(config = {}) {
+    super();
+    const {
+      provider = 'openai',
+      model = null,
+      apiKey = null,
+      gatewayUrl = null,
+    } = config;
+
+    this.provider = provider;
+    this.gatewayUrl = gatewayUrl || process.env.AI_GATEWAY_URL;
+
+    // Configure provider-specific settings
+    if (provider === 'openai') {
+      this.model = model || process.env.AI_MODEL || 'gpt-5';
+      const openaiConfig = {
+        apiKey: apiKey || process.env.OPENAI_API_KEY,
+      };
+      if (this.gatewayUrl) {
+        openaiConfig.baseURL = this.gatewayUrl;
+      }
+      this.providerModel = openai(this.model, openaiConfig);
+    } else if (provider === 'anthropic') {
+      this.model = model || process.env.AI_MODEL || 'claude-sonnet-4-5';
+      const anthropicConfig = {
+        apiKey: apiKey || process.env.ANTHROPIC_API_KEY,
+      };
+      if (this.gatewayUrl) {
+        anthropicConfig.baseURL = this.gatewayUrl;
+      }
+      this.providerModel = anthropic(this.model, anthropicConfig);
+    } else if (provider === 'google' || provider === 'gemini') {
+      this.model = model || process.env.AI_MODEL || 'gemini-2.5-pro';
+      const googleConfig = {
+        apiKey: apiKey || process.env.GOOGLE_API_KEY,
+      };
+      if (this.gatewayUrl) {
+        googleConfig.baseURL = this.gatewayUrl;
+      }
+      this.providerModel = google(this.model, googleConfig);
+    } else {
+      throw new Error(`Unsupported provider: ${provider}`);
+    }
+  }
+
+  async complete(prompt, options = {}) {
+    try {
+      const { text } = await generateText({
+        model: this.providerModel,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a technical specification analyzer. Extract structured data from technical documents and return ONLY valid JSON responses.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: options.temperature ?? 0.1,
+        maxTokens: options.maxTokens ?? 4000,
+      });
+
+      return text;
+    } catch (error) {
+      throw new Error(`AI API error: ${error.message}`);
+    }
+  }
+}
+
+/**
+ * Legacy OpenAI client (kept for backward compatibility)
+ * @deprecated Use VercelAIClient instead
  */
 export class OpenAIClient extends AIClient {
-  constructor(apiKey, model = 'gpt-4-turbo-preview') {
+  constructor(apiKey, model = 'gpt-5') {
     super();
     this.apiKey = apiKey;
     this.model = model;
@@ -51,7 +133,8 @@ export class OpenAIClient extends AIClient {
 }
 
 /**
- * Anthropic Claude client implementation
+ * Legacy Anthropic client (kept for backward compatibility)
+ * @deprecated Use VercelAIClient instead
  */
 export class AnthropicClient extends AIClient {
   constructor(apiKey, model = 'claude-3-sonnet-20240229') {
@@ -115,7 +198,7 @@ export class MockAIClient extends AIClient {
     // Extract text between --- markers
     const textMatch = prompt.match(/---\s*([\s\S]*?)\s*---/);
     if (!textMatch) return '[]';
-    
+
     const text = textMatch[1];
     const results = [];
 
@@ -153,7 +236,7 @@ export class MockAIClient extends AIClient {
   mockTechnicalResponse(prompt) {
     const textMatch = prompt.match(/---\s*([\s\S]*?)\s*---/);
     if (!textMatch) return '[]';
-    
+
     const text = textMatch[1];
     const results = [];
 
@@ -219,7 +302,7 @@ export class MockAIClient extends AIClient {
   mockDesignResponse(prompt) {
     const textMatch = prompt.match(/---\s*([\s\S]*?)\s*---/);
     if (!textMatch) return '[]';
-    
+
     const text = textMatch[1];
     const results = [];
 
@@ -244,7 +327,7 @@ export class MockAIClient extends AIClient {
   mockTestingResponse(prompt) {
     const textMatch = prompt.match(/---\s*([\s\S]*?)\s*---/);
     if (!textMatch) return '[]';
-    
+
     const text = textMatch[1];
     const results = [];
 
@@ -281,20 +364,38 @@ export class MockAIClient extends AIClient {
 export function createAIClient(options = {}) {
   const {
     provider = process.env.AI_PROVIDER || 'mock',
-    apiKey = process.env.AI_API_KEY,
+    apiKey = process.env.AI_API_KEY || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY,
     model = process.env.AI_MODEL,
+    gatewayUrl = process.env.AI_GATEWAY_URL,
   } = options;
 
   switch (provider.toLowerCase()) {
     case 'openai':
-      if (!apiKey) throw new Error('OpenAI API key required');
-      return new OpenAIClient(apiKey, model);
-    
+      return new VercelAIClient({
+        provider: 'openai',
+        model,
+        apiKey,
+        gatewayUrl,
+      });
+
     case 'anthropic':
     case 'claude':
-      if (!apiKey) throw new Error('Anthropic API key required');
-      return new AnthropicClient(apiKey, model);
-    
+      return new VercelAIClient({
+        provider: 'anthropic',
+        model,
+        apiKey,
+        gatewayUrl,
+      });
+
+    case 'google':
+    case 'gemini':
+      return new VercelAIClient({
+        provider: 'google',
+        model,
+        apiKey,
+        gatewayUrl,
+      });
+
     case 'mock':
     default:
       return new MockAIClient();

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { MockAIClient } from '../src/ai/client.js';
+import { MockAIClient, createAIClient, VercelAIClient } from '../src/ai/client.js';
 import { extractComplianceRequirements, extractTechnicalSpecs, extractDesignRequirements, extractTestingRequirements, processChunk } from '../src/ai/parser.js';
 
 test('MockAIClient - compliance extraction', async () => {
@@ -109,4 +109,23 @@ test('parseAIResponse - handles empty results', async () => {
   
   const results = await extractComplianceRequirements(text, context, client);
   assert.ok(Array.isArray(results), 'Should return array even if empty');
+});
+
+test('createAIClient - supports multiple providers', () => {
+  // Mock provider returns MockAIClient
+  const mockClient = createAIClient({ provider: 'mock' });
+  assert.ok(mockClient instanceof MockAIClient, 'Should create MockAIClient');
+  
+  // Test provider name variations
+  const geminiClient1 = createAIClient({ provider: 'google', apiKey: 'test-key' });
+  assert.ok(geminiClient1 instanceof VercelAIClient, 'Should create VercelAIClient for google');
+  
+  const geminiClient2 = createAIClient({ provider: 'gemini', apiKey: 'test-key' });
+  assert.ok(geminiClient2 instanceof VercelAIClient, 'Should create VercelAIClient for gemini');
+  
+  const openaiClient = createAIClient({ provider: 'openai', apiKey: 'test-key' });
+  assert.ok(openaiClient instanceof VercelAIClient, 'Should create VercelAIClient for openai');
+  
+  const anthropicClient = createAIClient({ provider: 'anthropic', apiKey: 'test-key' });
+  assert.ok(anthropicClient instanceof VercelAIClient, 'Should create VercelAIClient for anthropic');
 });
