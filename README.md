@@ -67,9 +67,17 @@ Sunny boy RAG
 
 
 
-工具使用说明
+文档导航
 ---
 
-- [基础使用说明（Usage）](docs/usage.md)
-- [AI解析系统实现文档](docs/ai-implementation.md)
-- [开发笔记（Dev Notes）](docs/dev-notes.md)
+### 用户文档
+- [使用说明（Usage）](docs/usage.md) - 命令行工具使用指南
+- [AI SDK 指南](docs/ai-sdk-guide.md) - Vercel AI SDK 使用和配置
+
+### 开发文档
+- [AI实现文档](docs/ai-implementation.md) - AI解析系统详细设计
+- [开发笔记（Dev Notes）](docs/dev-notes.md) - 技术决策和实现细节
+- [项目规范](.github/copilot-instructions.md) - 代码规范和约定
+
+### 其他
+- [变更日志（Changelog）](CHANGELOG.md) - 版本更新记录

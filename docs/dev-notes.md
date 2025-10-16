@@ -86,12 +86,25 @@
 ### AI客户端实现
 
 - **支持多提供商**：
-  - OpenAI（GPT-4/3.5）：生产环境首选
-  - Anthropic（Claude）：备选方案
+  - OpenAI（GPT-4/3.5）：生产环境首选，通过 @ai-sdk/openai
+  - Anthropic（Claude）：备选方案，通过 @ai-sdk/anthropic
+  - Google（Gemini）：通过 @ai-sdk/google，支持 gemini-2.5-pro, gemini-1.5-flash 等模型
   - MockAIClient：开发测试用，基于正则匹配
 
+- **Google/Gemini 集成**（2025年1月）：
+  - 依赖：@ai-sdk/google@2.0.23
+  - API Key：使用 GOOGLE_API_KEY 环境变量
+  - 默认模型：gemini-2.5-pro（可通过 AI_MODEL 配置）
+  - 支持 AI Gateway
+  - 成本效益：Gemini 通常比 OpenAI 更实惠，特别适合使用 Vercel AI Gateway 的 $5 额度
+  - 强项：技术文档理解、复杂推理
+
 - **配置方式**：
-  - 环境变量：AI_PROVIDER, AI_API_KEY, AI_MODEL
+  - 环境变量：AI_PROVIDER（openai/anthropic/google/gemini/mock）, AI_API_KEY, AI_MODEL
+  - 提供商对应的 API Key：
+    - OpenAI: OPENAI_API_KEY
+    - Anthropic: ANTHROPIC_API_KEY
+    - Google/Gemini: GOOGLE_API_KEY
   - createAIClient工厂函数自动选择
   - 响应解析支持markdown代码块
 
