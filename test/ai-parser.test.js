@@ -85,24 +85,18 @@ test('processChunk - comprehensive extraction', async () => {
   assert.ok(results.testing.length > 0, 'Should extract testing requirements');
 });
 
-test('parseAIResponse - handles JSON in code blocks', async () => {
+test('generateStructured - returns structured data directly', async () => {
   const client = new MockAIClient();
-  
-  // Mock response with markdown code block
-  const originalComplete = client.complete.bind(client);
-  client.complete = async (prompt) => {
-    return '```json\n[{"std_ref_id": "IEC 61439-1", "requirement_text": "test"}]\n```';
-  };
   
   const text = 'Test text with IEC 61439-1';
   const context = { sectionId: '26 24 13', chunkId: 'test' };
   const results = await extractComplianceRequirements(text, context, client);
   
-  assert.ok(Array.isArray(results), 'Should parse JSON from code block');
-  client.complete = originalComplete;
+  assert.ok(Array.isArray(results), 'Should return structured array');
+  assert.ok(results.every(r => r.sectionId && r.requirementText), 'Should have required fields');
 });
 
-test('parseAIResponse - handles empty results', async () => {
+test('generateStructured - handles empty results gracefully', async () => {
   const client = new MockAIClient();
   const text = 'No requirements here, just plain description.';
   const context = { sectionId: '26 24 13', chunkId: 'test-empty' };

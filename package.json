@@ -32,7 +32,8 @@
     "ai": "^5.0.70",
     "better-sqlite3": "^12.4.1",
     "dotenv": "^17.2.3",
-    "pdfjs-dist": "^5.4.296"
+    "pdfjs-dist": "^5.4.296",
+    "zod": "^4.1.12"
   },
   "pnpm": {
     "allowedBuiltDependencies": [

@@ -4,7 +4,7 @@
  * Supports multiple AI providers (OpenAI, Anthropic, etc.)
  */
 
-import { generateText } from 'ai';
+import { generateObject } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { anthropic } from '@ai-sdk/anthropic';
 import { google } from '@ai-sdk/google';
@@ -13,8 +13,8 @@ import { google } from '@ai-sdk/google';
  * Base AI client interface
  */
 export class AIClient {
-  async complete(prompt, options = {}) {
-    throw new Error('Not implemented');
+  async generateStructured(prompt, schema, options = {}) {
+    return { items: [] };
   }
 }
 
@@ -23,164 +23,43 @@ export class AIClient {
  * Supports OpenAI and Anthropic through unified interface
  */
 export class VercelAIClient extends AIClient {
+  #model;
+
   constructor(config = {}) {
     super();
+
     const {
       provider = 'openai',
       model = null,
-      apiKey = null,
-      gatewayUrl = null,
     } = config;
 
-    this.provider = provider;
-    this.gatewayUrl = gatewayUrl || process.env.AI_GATEWAY_URL;
-
-    // Configure provider-specific settings
-    if (provider === 'openai') {
-      this.model = model || process.env.AI_MODEL || 'gpt-5';
-      const openaiConfig = {
-        apiKey: apiKey || process.env.OPENAI_API_KEY,
-      };
-      if (this.gatewayUrl) {
-        openaiConfig.baseURL = this.gatewayUrl;
-      }
-      this.providerModel = openai(this.model, openaiConfig);
-    } else if (provider === 'anthropic') {
-      this.model = model || process.env.AI_MODEL || 'claude-sonnet-4-5';
-      const anthropicConfig = {
-        apiKey: apiKey || process.env.ANTHROPIC_API_KEY,
-      };
-      if (this.gatewayUrl) {
-        anthropicConfig.baseURL = this.gatewayUrl;
-      }
-      this.providerModel = anthropic(this.model, anthropicConfig);
-    } else if (provider === 'google' || provider === 'gemini') {
-      this.model = model || process.env.AI_MODEL || 'gemini-2.5-pro';
-      const googleConfig = {
-        apiKey: apiKey || process.env.GOOGLE_API_KEY,
-      };
-      if (this.gatewayUrl) {
-        googleConfig.baseURL = this.gatewayUrl;
-      }
-      this.providerModel = google(this.model, googleConfig);
-    } else {
-      throw new Error(`Unsupported provider: ${provider}`);
+    switch (provider) {
+      case 'openai': this.#model = openai(model); break;
+      case 'anthropic': this.#model = anthropic(model); break;
+      case 'google': this.#model = google(model); break;
+      default: this.#model = openai('gpt-5');
     }
   }
 
-  async complete(prompt, options = {}) {
+  async generateStructured(prompt, schema, options = {}) {
     try {
-      const { text } = await generateText({
-        model: this.providerModel,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a technical specification analyzer. Extract structured data from technical documents and return ONLY valid JSON responses.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: options.temperature ?? 0.1,
-        maxTokens: options.maxTokens ?? 4000,
+      const { object } = await generateObject({
+        model: this.#model,
+        schema,
+        system: 'You are a technical specification analyzer. Extract structured data from technical documents accurately.',
+        prompt,
       });
-
-      return text;
+      return object;
     } catch (error) {
       throw new Error(`AI API error: ${error.message}`);
     }
   }
 }
 
-/**
- * Legacy OpenAI client (kept for backward compatibility)
- * @deprecated Use VercelAIClient instead
- */
-export class OpenAIClient extends AIClient {
-  constructor(apiKey, model = 'gpt-5') {
-    super();
-    this.apiKey = apiKey;
-    this.model = model;
-    this.baseURL = 'https://api.openai.com/v1';
-  }
-
-  async complete(prompt, options = {}) {
-    const response = await fetch(`${this.baseURL}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages: [
-          { role: 'system', content: 'You are a technical specification analyzer. Extract structured data from technical documents and return ONLY valid JSON responses.' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: options.temperature ?? 0.1,
-        max_tokens: options.maxTokens ?? 4000,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
-  }
-}
-
-/**
- * Legacy Anthropic client (kept for backward compatibility)
- * @deprecated Use VercelAIClient instead
- */
-export class AnthropicClient extends AIClient {
-  constructor(apiKey, model = 'claude-3-sonnet-20240229') {
-    super();
-    this.apiKey = apiKey;
-    this.model = model;
-    this.baseURL = 'https://api.anthropic.com/v1';
-  }
-
-  async complete(prompt, options = {}) {
-    const response = await fetch(`${this.baseURL}/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': this.apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: this.model,
-        max_tokens: options.maxTokens ?? 4000,
-        messages: [
-          { role: 'user', content: prompt }
-        ],
-        temperature: options.temperature ?? 0.1,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Anthropic API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.content[0].text;
-  }
-}
-
-/**
- * Mock AI client for testing
- * Returns deterministic responses based on input patterns
- */
 export class MockAIClient extends AIClient {
-  async complete(prompt, options = {}) {
-    // Simulate network delay
+  async generateStructured(prompt, schema, options = {}) {
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    // Analyze prompt to determine what to extract
     if (prompt.includes('standard compliance requirements')) {
       return this.mockComplianceResponse(prompt);
     } else if (prompt.includes('technical specifications')) {
@@ -191,18 +70,16 @@ export class MockAIClient extends AIClient {
       return this.mockTestingResponse(prompt);
     }
 
-    return '[]';
+    return { items: [] };
   }
 
   mockComplianceResponse(prompt) {
-    // Extract text between --- markers
-    const textMatch = prompt.match(/---\s*([\s\S]*?)\s*---/);
-    if (!textMatch) return '[]';
+    const textMatch = prompt.match(/Text to analyze:\s*---\s*([\s\S]*?)\s*---/);
+    if (!textMatch) return { items: [] };
 
     const text = textMatch[1];
-    const results = [];
+    const items = [];
 
-    // Look for standard references
     const standardPatterns = [
       /IEC\s+\d+[-\d]*/gi,
       /BS\s+(?:EN\s+)?\d+[-\d]*/gi,
@@ -215,11 +92,10 @@ export class MockAIClient extends AIClient {
       const matches = text.matchAll(pattern);
       for (const match of matches) {
         const stdRef = match[0];
-        // Find the sentence containing this standard
         const sentences = text.split(/[.!?]+/);
         const sentence = sentences.find(s => s.includes(stdRef));
         if (sentence) {
-          results.push({
+          items.push({
             std_ref_id: stdRef,
             requirement_text: sentence.trim(),
             applies_to: null,
@@ -230,20 +106,19 @@ export class MockAIClient extends AIClient {
       }
     });
 
-    return JSON.stringify(results);
+    return { items };
   }
 
   mockTechnicalResponse(prompt) {
-    const textMatch = prompt.match(/---\s*([\s\S]*?)\s*---/);
-    if (!textMatch) return '[]';
+    const textMatch = prompt.match(/Text to analyze:\s*---\s*([\s\S]*?)\s*---/);
+    if (!textMatch) return { items: [] };
 
     const text = textMatch[1];
-    const results = [];
+    const items = [];
 
-    // Look for voltage specs
     const voltageMatch = text.match(/(\d+)V/);
     if (voltageMatch) {
-      results.push({
+      items.push({
         spec_category: 'electrical',
         parameter_name: 'voltage',
         value: voltageMatch[1],
@@ -254,10 +129,9 @@ export class MockAIClient extends AIClient {
       });
     }
 
-    // Look for temperature specs
     const tempMatch = text.match(/(\d+)°C/);
     if (tempMatch) {
-      results.push({
+      items.push({
         spec_category: 'environmental',
         parameter_name: 'temperature',
         value: tempMatch[1],
@@ -268,10 +142,9 @@ export class MockAIClient extends AIClient {
       });
     }
 
-    // Look for IP ratings
     const ipMatch = text.match(/IP\s*(\d+)/);
     if (ipMatch) {
-      results.push({
+      items.push({
         spec_category: 'protection',
         parameter_name: 'IP_rating',
         value: `IP${ipMatch[1]}`,
@@ -282,10 +155,9 @@ export class MockAIClient extends AIClient {
       });
     }
 
-    // Look for IK ratings
     const ikMatch = text.match(/IK\s*(\d+)/);
     if (ikMatch) {
-      results.push({
+      items.push({
         spec_category: 'protection',
         parameter_name: 'IK_rating',
         value: `IK${ikMatch[1]}`,
@@ -296,22 +168,21 @@ export class MockAIClient extends AIClient {
       });
     }
 
-    return JSON.stringify(results);
+    return { items };
   }
 
   mockDesignResponse(prompt) {
-    const textMatch = prompt.match(/---\s*([\s\S]*?)\s*---/);
-    if (!textMatch) return '[]';
+    const textMatch = prompt.match(/Text to analyze:\s*---\s*([\s\S]*?)\s*---/);
+    if (!textMatch) return { items: [] };
 
     const text = textMatch[1];
-    const results = [];
+    const items = [];
 
-    // Look for installation requirements
     if (text.match(/mount|install|height/i)) {
       const sentences = text.split(/[.!?]+/);
       sentences.forEach(sentence => {
         if (sentence.match(/shall.*mount|shall.*install|height/i)) {
-          results.push({
+          items.push({
             requirement_category: 'installation',
             requirement_text: sentence.trim(),
             applies_to: null,
@@ -321,17 +192,16 @@ export class MockAIClient extends AIClient {
       });
     }
 
-    return JSON.stringify(results);
+    return { items };
   }
 
   mockTestingResponse(prompt) {
-    const textMatch = prompt.match(/---\s*([\s\S]*?)\s*---/);
-    if (!textMatch) return '[]';
+    const textMatch = prompt.match(/Text to analyze:\s*---\s*([\s\S]*?)\s*---/);
+    if (!textMatch) return { items: [] };
 
     const text = textMatch[1];
-    const results = [];
+    const items = [];
 
-    // Look for test requirements
     const testPatterns = [
       { pattern: /FAT/i, type: 'FAT' },
       { pattern: /SAT/i, type: 'SAT' },
@@ -344,7 +214,7 @@ export class MockAIClient extends AIClient {
         const sentences = text.split(/[.!?]+/);
         const sentence = sentences.find(s => s.match(pattern));
         if (sentence) {
-          results.push({
+          items.push({
             test_type: type,
             requirement_text: sentence.trim(),
             applies_to: null,
@@ -354,7 +224,7 @@ export class MockAIClient extends AIClient {
       }
     });
 
-    return JSON.stringify(results);
+    return { items };
   }
 }
 
@@ -364,9 +234,7 @@ export class MockAIClient extends AIClient {
 export function createAIClient(options = {}) {
   const {
     provider = process.env.AI_PROVIDER || 'mock',
-    apiKey = process.env.AI_API_KEY || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY,
     model = process.env.AI_MODEL,
-    gatewayUrl = process.env.AI_GATEWAY_URL,
   } = options;
 
   switch (provider.toLowerCase()) {
@@ -374,8 +242,6 @@ export function createAIClient(options = {}) {
       return new VercelAIClient({
         provider: 'openai',
         model,
-        apiKey,
-        gatewayUrl,
       });
 
     case 'anthropic':
@@ -383,8 +249,6 @@ export function createAIClient(options = {}) {
       return new VercelAIClient({
         provider: 'anthropic',
         model,
-        apiKey,
-        gatewayUrl,
       });
 
     case 'google':
@@ -392,8 +256,6 @@ export function createAIClient(options = {}) {
       return new VercelAIClient({
         provider: 'google',
         model,
-        apiKey,
-        gatewayUrl,
       });
 
     case 'mock':

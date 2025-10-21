@@ -5,9 +5,10 @@
 本项目使用 Vercel AI SDK 实现 AI 驱动的技术规范提取，具有以下优势：
 
 - **统一接口**：一套代码支持多个 AI 提供商
-- **类型安全**：完整的 TypeScript 类型支持
-- **流式响应**：支持流式输出（虽然当前使用 generateText）
-- **Gateway 支持**：可选接入 Vercel AI Gateway 进行管理
+- **结构化输出**：使用 `generateObject` + zod schema 确保数据质量
+- **类型安全**：完整的 TypeScript 类型支持和运行时验证
+- **Gateway 支持**：AI SDK 自动支持 Vercel AI Gateway（通过环境变量配置）
+- **零解析错误**：AI 直接返回验证后的结构化对象，无需手动解析 JSON
 
 ## 快速开始
 
@@ -20,18 +21,22 @@
 SUNNY_SQLITE=./data.sqlite
 
 # 必需：AI 提供商
-AI_PROVIDER=openai  # 或 anthropic
+AI_PROVIDER=openai  # 或 anthropic, google
 
-# OpenAI 配置
+# OpenAI 配置（AI SDK 自动读取）
 OPENAI_API_KEY=sk-proj-xxxxx
-AI_MODEL=gpt-5  # 可选，默认值
 
-# 或者使用 Anthropic
+# 或者使用 Anthropic（AI SDK 自动读取）
 # ANTHROPIC_API_KEY=sk-ant-xxxxx
-# AI_MODEL=claude-sonnet-4-5
 
-# 可选：使用 AI Gateway
-# AI_GATEWAY_URL=https://gateway.ai.cloudflare.com/v1/YOUR_ACCOUNT/YOUR_GATEWAY
+# 或者使用 Google Gemini（AI SDK 自动读取）
+# GOOGLE_API_KEY=xxxxx
+
+# 可选：自定义模型（否则使用提供商默认值）
+# AI_MODEL=gpt-5  # 或 claude-sonnet-4-5, gemini-2.5-pro
+
+# 注意：AI Gateway URL 由 AI SDK 通过各提供商的环境变量自动处理
+# 例如：OPENAI_BASE_URL, ANTHROPIC_BASE_URL 等
 ```
 
 ### 2. 测试 Mock 模式
@@ -90,20 +95,28 @@ Cloudflare 也提供类似的服务：
 
 ```javascript
 import { createAIClient } from './src/ai/client.js';
+import { z } from 'zod';
 
 // 自动从环境变量读取配置
 const client = createAIClient();
 
-// 或手动配置
+// 或手动配置提供商和模型
 const client = createAIClient({
   provider: 'openai',
-  apiKey: 'sk-xxx',
-  model: 'gpt-5',
-  gatewayUrl: 'https://...'
+  model: 'gpt-5'
 });
 
-// 发送请求
-const response = await client.complete('Analyze this text...');
+// 定义数据结构
+const schema = z.object({
+  items: z.array(z.object({
+    name: z.string(),
+    value: z.string(),
+  }))
+});
+
+// 发送请求，获取结构化数据
+const result = await client.generateStructured('Extract parameters...', schema);
+// result = { items: [{ name: '...', value: '...' }, ...] }
 ```
 
 ### 处理 Chunks
@@ -121,7 +134,12 @@ const chunk = {
 };
 
 const results = await processChunk(chunk, client);
-// results 包含 compliance, technical, design, testing 四类提取结果
+// results = {
+//   compliance: [{ sectionId, stdRefId, requirementText, ... }],
+//   technical: [{ sectionId, specCategory, parameterName, value, ... }],
+//   design: [{ sectionId, requirementCategory, requirementText, ... }],
+//   testing: [{ sectionId, testType, requirementText, ... }]
+// }
 ```
 
 ### 批量处理
@@ -181,13 +199,13 @@ Error: AI API error: Failed to fetch
 
 解决：检查 AI_GATEWAY_URL 是否正确，确保网络连接正常。
 
-### 响应解析失败
+### 响应验证失败
 
 ```
-Failed to parse AI response: Unexpected token
+AI API error: Response validation failed
 ```
 
-这通常是 AI 返回了非 JSON 格式。系统会自动尝试提取 markdown 代码块中的 JSON，如果仍然失败，该 chunk 会返回空结果但不会中断处理。
+这表示 AI 返回的数据不符合 zod schema 定义。这种情况很少见，因为 `generateObject` 会引导 AI 生成正确格式。如果发生，请检查 prompt 和 schema 定义是否匹配。
 
 ## 扩展支持
 
@@ -199,10 +217,29 @@ Failed to parse AI response: Unexpected token
 case 'newprovider':
   return new VercelAIClient({
     provider: 'newprovider',
-    model,
-    apiKey,
-    gatewayUrl,
+    model
   });
+```
+
+然后在 `VercelAIClient` 构造函数中添加对应的模型初始化：
+
+```javascript
+case 'newprovider': 
+  this.#model = newprovider(model); 
+  break;
+```
+
+### 自定义数据结构
+
+在 `src/ai/parser.js` 顶部修改 zod schema：
+
+```javascript
+const complianceRequirementSchema = z.object({
+  items: z.array(z.object({
+    // 添加或修改字段
+    new_field: z.string().describe('Field description'),
+  }))
+});
 ```
 
 ### 自定义提示词

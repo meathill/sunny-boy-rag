@@ -86,12 +86,12 @@
 ### AI客户端实现
 
 - **支持多提供商**：
-  - OpenAI（GPT-4/3.5）：生产环境首选，通过 @ai-sdk/openai
+  - OpenAI（GPT-5）：生产环境首选，通过 @ai-sdk/openai
   - Anthropic（Claude）：备选方案，通过 @ai-sdk/anthropic
-  - Google（Gemini）：通过 @ai-sdk/google，支持 gemini-2.5-pro, gemini-1.5-flash 等模型
+  - Google（Gemini）：通过 @ai-sdk/google，支持 gemini-2.5-pro, gemini-2.5-flash 等模型
   - MockAIClient：开发测试用，基于正则匹配
 
-- **Google/Gemini 集成**（2025年1月）：
+- **Google/Gemini 集成**（2025年10月）：
   - 依赖：@ai-sdk/google@2.0.23
   - API Key：使用 GOOGLE_API_KEY 环境变量
   - 默认模型：gemini-2.5-pro（可通过 AI_MODEL 配置）
@@ -99,18 +99,23 @@
   - 成本效益：Gemini 通常比 OpenAI 更实惠，特别适合使用 Vercel AI Gateway 的 $5 额度
   - 强项：技术文档理解、复杂推理
 
-- **配置方式**：
-  - 环境变量：AI_PROVIDER（openai/anthropic/google/gemini/mock）, AI_API_KEY, AI_MODEL
-  - 提供商对应的 API Key：
-    - OpenAI: OPENAI_API_KEY
-    - Anthropic: ANTHROPIC_API_KEY
-    - Google/Gemini: GOOGLE_API_KEY
-  - createAIClient工厂函数自动选择
-  - 响应解析支持markdown代码块
+- **配置方式**（2025年10月重构）：
+  - 环境变量：AI_PROVIDER（openai/anthropic/google/gemini/mock）
+  - AI SDK 自动处理 API Key 和 Gateway URL（通过各提供商的环境变量）
+  - 提供商对应的 API Key：`AI_GATEWAY_API_KEY`
+  - createAIClient 工厂函数自动选择提供商
+  - 使用私有字段 `#model` 存储模型实例
+
+- **结构化输出**（2025年10月）：
+  - 使用 `generateObject` 替代 `generateText`
+  - 通过 zod schema 定义数据结构
+  - AI 直接返回验证后的结构化对象
+  - 消除 JSON 解析错误风险
+  - 统一接口：`generateStructured(prompt, schema)`
 
 - **错误处理**：
-  - parseAIResponse容错处理
-  - 支持空结果返回
+  - AI SDK 自动验证响应结构
+  - 支持空结果返回（`{ items: [] }`）
   - 详细错误日志
 
 ### 批处理系统

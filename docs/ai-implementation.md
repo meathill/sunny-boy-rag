@@ -126,11 +126,12 @@ const chunk = {
 
 const results = await processChunk(chunk, aiClient);
 // results = {
-//   compliance: [...],
-//   technical: [...],
-//   design: [...],
-//   testing: [...]
+//   compliance: [{ sectionId, stdRefId, requirementText, ... }],
+//   technical: [{ sectionId, specCategory, parameterName, value, ... }],
+//   design: [{ sectionId, requirementCategory, requirementText, ... }],
+//   testing: [{ sectionId, testType, requirementText, ... }]
 // }
+// 所有数据都是结构化对象，无需额外解析
 ```
 
 #### 批量处理
@@ -166,7 +167,24 @@ const allReqs = getAllSectionRequirementsRecursive(db, '26 24 13');
 
 ## AI提示词设计
 
+### 结构化输出（Zod Schema）
+
+系统使用 Vercel AI SDK 的 `generateObject` 功能，通过 zod schema 定义数据结构。AI 直接返回验证后的结构化对象，无需手动解析 JSON。
+
 ### 提取标准合规要求
+
+**Zod Schema 定义：**
+```javascript
+const complianceRequirementSchema = z.object({
+  items: z.array(z.object({
+    std_ref_id: z.string().nullable(),
+    requirement_text: z.string(),
+    applies_to: z.string().nullable(),
+    is_mandatory: z.number(),
+    requirement_type: z.enum(['standard_compliance', 'certification', 'accreditation', 'test_method'])
+  }))
+});
+```
 
 系统识别以下模式：
 - 国际/行业标准ID（IEC, BS, EN, ISO, ASTM等）
@@ -224,7 +242,8 @@ const allReqs = getAllSectionRequirementsRecursive(db, '26 24 13');
 
 1. **OpenAI** (GPT-4, GPT-3.5等)
 2. **Anthropic** (Claude系列)
-3. **Mock** (测试用，基于正则匹配)
+3. **Google** (Gemini系列)
+4. **Mock** (测试用，基于正则匹配)
 
 ### 配置示例
 
@@ -232,19 +251,41 @@ const allReqs = getAllSectionRequirementsRecursive(db, '26 24 13');
 // Mock客户端（默认，用于测试）
 const mockClient = createAIClient({ provider: 'mock' });
 
-// OpenAI客户端
+// OpenAI客户端（API Key 通过 OPENAI_API_KEY 环境变量）
 const openaiClient = createAIClient({
   provider: 'openai',
-  apiKey: 'sk-...',
-  model: 'gpt-5'
+  model: 'gpt-5'  // 可选
 });
 
-// Anthropic客户端
+// Anthropic客户端（API Key 通过 ANTHROPIC_API_KEY 环境变量）
 const claudeClient = createAIClient({
   provider: 'anthropic',
-  apiKey: 'sk-ant-...',
-  model: 'claude-3-sonnet-20240229'
+  model: 'claude-sonnet-4-5'  // 可选
 });
+
+// Google客户端（API Key 通过 GOOGLE_API_KEY 环境变量）
+const geminiClient = createAIClient({
+  provider: 'google',
+  model: 'gemini-2.5-pro'  // 可选
+});
+```
+
+### 结构化输出接口
+
+所有客户端实现统一的 `generateStructured(prompt, schema)` 接口：
+
+```javascript
+import { z } from 'zod';
+
+const schema = z.object({
+  items: z.array(z.object({
+    field1: z.string(),
+    field2: z.number(),
+  }))
+});
+
+const result = await client.generateStructured('Extract data...', schema);
+// result = { items: [{ field1: '...', field2: 123 }, ...] }
 ```
 
 ## 数据查询模式
@@ -328,33 +369,54 @@ ORDER BY reference_count DESC;
 ### 添加新的提取器
 
 ```javascript
+import { z } from 'zod';
+
+// 1. 定义 zod schema
+const newRequirementSchema = z.object({
+  items: z.array(z.object({
+    field1: z.string().describe('Field 1 description'),
+    field2: z.number().describe('Field 2 description'),
+  }))
+});
+
+// 2. 实现提取函数
 export async function extractNewRequirement(text, context, aiClient) {
-  const prompt = `Your custom prompt...`;
-  const response = await aiClient.complete(prompt);
-  const extracted = parseAIResponse(response);
+  const prompt = `Your custom prompt...
   
-  return extracted.map(req => ({
+Text to analyze:
+---
+${text}
+---`;
+
+  const result = await aiClient.generateStructured(prompt, newRequirementSchema);
+  
+  return result.items.map(req => ({
     sectionId: context.sectionId,
     chunkId: context.chunkId,
-    // ... 其他字段
+    field1: req.field1,
+    field2: req.field2,
   }));
 }
 ```
 
 ### 添加新的AI提供商
 
-```javascript
-export class CustomAIClient extends AIClient {
-  constructor(apiKey, model) {
-    super();
-    this.apiKey = apiKey;
-    this.model = model;
-  }
+如果 Vercel AI SDK 支持新提供商，只需在 `createAIClient` 中添加：
 
-  async complete(prompt, options = {}) {
-    // 实现API调用
-  }
-}
+```javascript
+case 'newprovider':
+  return new VercelAIClient({
+    provider: 'newprovider',
+    model
+  });
+```
+
+并在 `VercelAIClient` 构造函数中初始化模型：
+
+```javascript
+case 'newprovider': 
+  this.#model = newprovider(model); 
+  break;
 ```
 
 ## 测试
