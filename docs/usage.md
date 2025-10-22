@@ -91,12 +91,20 @@ DEBUG=1
 # 处理特定Section的所有chunks（推荐用于测试短Section）
 ./src/cli/parse.js parse --section-id "26 24 13"
 
-# 使用真实OpenAI API处理
-AI_PROVIDER=openai AI_API_KEY=sk-xxx ./src/cli/parse.js parse --limit 5
+# 使用真实OpenAI API处理（带速率限制）
+AI_PROVIDER=openai ./src/cli/parse.js parse --limit 5 --concurrency 1 --delay 5000
 
-# 调整并发数（默认3）
+# 针对免费API额度限制：单并发 + 5秒延迟
+./src/cli/parse.js parse --concurrency 1 --delay 5000
+
+# 调整并发数（无延迟，适用于无限制API）
 ./src/cli/parse.js parse --concurrency 5 --limit 20
 ```
+
+**速率限制参数：**
+- `--concurrency N`: 并发请求数（默认：1）
+- `--delay N`: 批次间延迟毫秒数（默认：0）
+- 推荐免费额度：`--concurrency 1 --delay 5000`（每请求间隔5秒）
 
 **提取的数据类型：**
 - **标准合规要求**（compliance_requirements）：IEC、ISO、BS等标准引用和认证要求

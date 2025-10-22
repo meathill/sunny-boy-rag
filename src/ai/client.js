@@ -5,9 +5,6 @@
  */
 
 import { generateObject } from 'ai';
-import { openai } from '@ai-sdk/openai';
-import { anthropic } from '@ai-sdk/anthropic';
-import { google } from '@ai-sdk/google';
 
 /**
  * Base AI client interface
@@ -34,10 +31,13 @@ export class VercelAIClient extends AIClient {
     } = config;
 
     switch (provider) {
-      case 'openai': this.#model = openai(model); break;
-      case 'anthropic': this.#model = anthropic(model); break;
-      case 'google': this.#model = google(model); break;
-      default: this.#model = openai('gpt-5');
+      case 'openai':
+      case 'anthropic':
+      case 'google':
+        this.#model = `${provider}/${model}`;
+        break;
+
+      default: this.#model = 'openai/gpt-5';
     }
   }
 

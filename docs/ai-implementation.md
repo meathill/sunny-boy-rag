@@ -83,12 +83,19 @@ AI_MODEL=gpt-5  # 可选
 # 处理前10个chunks
 ./src/cli/parse.js parse --limit 10
 
-# 使用真实OpenAI API
-AI_PROVIDER=openai AI_API_KEY=sk-xxx ./src/cli/parse.js parse --limit 5
+# 使用真实OpenAI API（带速率限制）
+AI_PROVIDER=openai ./src/cli/parse.js parse --limit 5 --concurrency 1 --delay 5000
 
-# 自定义并发数
-./src/cli/parse.js parse --concurrency 5 --limit 20
+# 自定义并发数（无延迟）
+./src/cli/parse.js parse --concurrency 3 --limit 20
+
+# 针对免费API额度限制：单并发 + 5秒延迟
+./src/cli/parse.js parse --concurrency 1 --delay 5000
 ```
+
+**速率限制说明：**
+- `--concurrency 1`: 一次只处理一个chunk（适用于免费API额度）
+- `--delay 5000`: 每批次之间暂停5秒（5000毫秒），避免触发速率限制
 
 #### 2. 查询命令 (`query.js`)
 

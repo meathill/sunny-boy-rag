@@ -75,7 +75,7 @@ ${text}
 ---`;
 
   const result = await aiClient.generateStructured(prompt, complianceRequirementSchema);
-  
+
   return result.items.map(req => ({
     sectionId: context.sectionId,
     chunkId: context.chunkId,
@@ -117,7 +117,7 @@ ${text}
 ---`;
 
   const result = await aiClient.generateStructured(prompt, technicalSpecSchema);
-  
+
   return result.items.map(spec => ({
     sectionId: context.sectionId,
     chunkId: context.chunkId,
@@ -158,7 +158,7 @@ ${text}
 ---`;
 
   const result = await aiClient.generateStructured(prompt, designRequirementSchema);
-  
+
   return result.items.map(req => ({
     sectionId: context.sectionId,
     chunkId: context.chunkId,
@@ -199,7 +199,7 @@ ${text}
 ---`;
 
   const result = await aiClient.generateStructured(prompt, testingRequirementSchema);
-  
+
   return result.items.map(req => ({
     sectionId: context.sectionId,
     chunkId: context.chunkId,
@@ -253,7 +253,8 @@ export async function processChunk(chunk, aiClient) {
  */
 export async function batchProcessChunks(chunks, aiClient, options = {}) {
   const {
-    concurrency = 3,
+    concurrency = 1,
+    delayMs = 0,
     onProgress = null,
     onError = null,
   } = options;
@@ -281,6 +282,13 @@ export async function batchProcessChunks(chunks, aiClient, options = {}) {
 
     const batchResults = await Promise.all(promises);
     results.push(...batchResults);
+
+    // Delay between batches (except after the last batch)
+    if (delayMs > 0 && i + concurrency < chunks.length) {
+      console.log('Sleep:', Date.now());
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      console.log('Sleep over.', Date.now());
+    }
   }
 
   return { results, errors };
