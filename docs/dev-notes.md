@@ -126,9 +126,11 @@
   - 批次处理避免内存溢出
   
 - **速率限制**（2025年10月）：
-  - 新增 `delayMs` 参数控制批次间延迟
-  - 默认0毫秒（无延迟）
-  - 推荐免费额度：`--concurrency 1 --delay 5000`（每请求间隔5秒）
+  - 新增 `delayMs` 参数控制AI请求间延迟
+  - 默认0毫秒（无延迟，4个提取器并行）
+  - 当 `delayMs > 0` 时，4个提取器串行执行，每次间隔 `delayMs`
+  - 推荐免费额度：`--concurrency 1 --delay 5000`
+  - 示例：delay=5000时，每chunk约15秒（compliance→5s→technical→5s→design→5s→testing）
 
 - **进度跟踪**：
   - ai_processing_status表记录状态

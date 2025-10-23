@@ -4,9 +4,16 @@
 
 ### 新功能
 - **请求延迟控制**：新增 `--delay` 参数
-  - 控制批次之间的延迟（毫秒）
+  - 控制AI请求之间的延迟（毫秒）
   - 适应免费API额度限制
   - 默认值：0（无延迟）
+  
+### 重要优化
+- **智能串行处理**：
+  - 当 `delayMs > 0` 时，每个 chunk 的 4 次 AI 请求（compliance、technical、design、testing）改为**串行执行**
+  - 每次请求之间等待 `delayMs` 毫秒
+  - 示例：`--delay 5000` 时，每个 chunk 需要 ~15 秒（3个延迟 × 5秒）
+  - 当 `delayMs = 0` 时，保持并行执行以提高效率
   
 ### 修改
 - **默认并发数**：从 3 改为 1
@@ -15,16 +22,23 @@
   
 ### 使用示例
 ```bash
-# 针对免费API：每次请求间隔5秒
+# 针对免费API：串行请求 + 每次间隔5秒
+# 每个chunk需要约15秒（4次请求，3个延迟）
 ./src/cli/parse.js parse --concurrency 1 --delay 5000
 
-# 无限制API：更高并发
+# 无限制API：并行处理，更高效
 ./src/cli/parse.js parse --concurrency 5
 ```
+
+### 技术细节
+- 每个 chunk 包含 4 个提取器（compliance、technical、design、testing）
+- 无延迟（默认）：4 个请求并行执行，速度快
+- 有延迟：4 个请求串行执行，每次间隔 `delayMs`，避免超过速率限制
 
 ### 文档
 - 更新 CLI 帮助信息
 - 更新使用文档和开发笔记
+- 添加技术说明
 
 ## 2025-10-21 - 重构AI客户端使用generateObject
 

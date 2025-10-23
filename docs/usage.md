@@ -102,9 +102,15 @@ AI_PROVIDER=openai ./src/cli/parse.js parse --limit 5 --concurrency 1 --delay 50
 ```
 
 **速率限制参数：**
-- `--concurrency N`: 并发请求数（默认：1）
-- `--delay N`: 批次间延迟毫秒数（默认：0）
-- 推荐免费额度：`--concurrency 1 --delay 5000`（每请求间隔5秒）
+- `--concurrency N`: 并发chunk数（默认：1）
+- `--delay N`: AI请求间延迟毫秒数（默认：0）
+- 推荐免费额度：`--concurrency 1 --delay 5000`
+
+**重要说明：**
+- 每个 chunk 包含 4 次 AI 请求（compliance、technical、design、testing）
+- 当 `--delay > 0` 时，这 4 次请求**串行执行**，每次间隔 `delay` 毫秒
+- 示例：`--delay 5000` 时，每个 chunk 约需 15 秒（3 个间隔 × 5 秒）
+- 当 `--delay 0` 时（默认），4 次请求并行执行，速度快
 
 **提取的数据类型：**
 - **标准合规要求**（compliance_requirements）：IEC、ISO、BS等标准引用和认证要求

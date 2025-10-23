@@ -46,7 +46,10 @@ Options:
   --limit N          Number of chunks to process (default: 100)
   --offset N         Skip first N chunks (default: 0)
   --concurrency N    Number of parallel AI requests (default: 1)
-  --delay N          Delay in milliseconds between batches (default: 0)
+  --delay N          Delay in milliseconds between AI requests (default: 0)
+                     Note: Each chunk makes 4 AI requests (compliance, technical, 
+                     design, testing). With delay>0, they run serially with delay 
+                     between each. E.g., --delay 5000 = ~15s per chunk.
   --section-id "X Y Z"  Process only chunks from specific section (e.g., "26 24 13")
   --db PATH          Database file path (default: $SUNNY_SQLITE or :memory:)
   --help             Show this help
@@ -67,10 +70,11 @@ Examples:
   # Show processing stats
   ./src/cli/parse.js stats
   
-  # Use OpenAI with rate limiting (5s delay between requests)
+  # Use OpenAI with rate limiting (5s delay = ~15s per chunk)
+  # Each chunk = 4 AI requests (serial when delay>0)
   AI_PROVIDER=openai ./src/cli/parse.js parse --concurrency 1 --delay 5000
   
-  # Process with custom concurrency
+  # Process with custom concurrency (parallel requests, fast)
   ./src/cli/parse.js parse --concurrency 3
 `);
     process.exit(0);

@@ -212,8 +212,14 @@ ${text}
 
 /**
  * Process a single chunk through all extractors
+ * @param {Object} chunk - Chunk to process
+ * @param {Object} aiClient - AI client
+ * @param {Object} options - Processing options
+ * @param {number} options.delayMs - Delay between extractors in milliseconds (0 for parallel)
  */
-export async function processChunk(chunk, aiClient) {
+export async function processChunk(chunk, aiClient, options = {}) {
+  const { delayMs = 0 } = options;
+  
   const context = {
     sectionId: chunk.section_id,
     chunkId: chunk.id,
@@ -228,18 +234,32 @@ export async function processChunk(chunk, aiClient) {
   };
 
   try {
-    // Run all extractors in parallel for efficiency
-    const [compliance, technical, design, testing] = await Promise.all([
-      extractComplianceRequirements(chunk.text, context, aiClient),
-      extractTechnicalSpecs(chunk.text, context, aiClient),
-      extractDesignRequirements(chunk.text, context, aiClient),
-      extractTestingRequirements(chunk.text, context, aiClient),
-    ]);
+    if (delayMs > 0) {
+      // Serial execution with delay between requests
+      results.compliance = await extractComplianceRequirements(chunk.text, context, aiClient);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      
+      results.technical = await extractTechnicalSpecs(chunk.text, context, aiClient);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      
+      results.design = await extractDesignRequirements(chunk.text, context, aiClient);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      
+      results.testing = await extractTestingRequirements(chunk.text, context, aiClient);
+    } else {
+      // Parallel execution for efficiency (no delay)
+      const [compliance, technical, design, testing] = await Promise.all([
+        extractComplianceRequirements(chunk.text, context, aiClient),
+        extractTechnicalSpecs(chunk.text, context, aiClient),
+        extractDesignRequirements(chunk.text, context, aiClient),
+        extractTestingRequirements(chunk.text, context, aiClient),
+      ]);
 
-    results.compliance = compliance;
-    results.technical = technical;
-    results.design = design;
-    results.testing = testing;
+      results.compliance = compliance;
+      results.technical = technical;
+      results.design = design;
+      results.testing = testing;
+    }
 
     return results;
   } catch (error) {
@@ -267,7 +287,7 @@ export async function batchProcessChunks(chunks, aiClient, options = {}) {
     const batch = chunks.slice(i, i + concurrency);
     const promises = batch.map(async chunk => {
       try {
-        const result = await processChunk(chunk, aiClient);
+        const result = await processChunk(chunk, aiClient, { delayMs });
         if (onProgress) {
           onProgress({ chunk, result, processed: i + 1, total: chunks.length });
         }
@@ -284,10 +304,10 @@ export async function batchProcessChunks(chunks, aiClient, options = {}) {
     results.push(...batchResults);
 
     // Delay between batches (except after the last batch)
+    // Note: When delayMs > 0, processChunk already adds delays between extractors,
+    // so this delay is between chunks (after all 4 extractors complete)
     if (delayMs > 0 && i + concurrency < chunks.length) {
-      console.log('Sleep:', Date.now());
       await new Promise(resolve => setTimeout(resolve, delayMs));
-      console.log('Sleep over.', Date.now());
     }
   }
 

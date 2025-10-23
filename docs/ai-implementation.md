@@ -95,7 +95,9 @@ AI_PROVIDER=openai ./src/cli/parse.js parse --limit 5 --concurrency 1 --delay 50
 
 **速率限制说明：**
 - `--concurrency 1`: 一次只处理一个chunk（适用于免费API额度）
-- `--delay 5000`: 每批次之间暂停5秒（5000毫秒），避免触发速率限制
+- `--delay 5000`: 每次AI请求之间暂停5秒（5000毫秒）
+- **重要**：每个chunk包含4次AI请求，当有delay时串行执行
+- 示例：`--delay 5000` 时，每个chunk需要约15秒（4次请求，3个间隔）
 
 #### 2. 查询命令 (`query.js`)
 
