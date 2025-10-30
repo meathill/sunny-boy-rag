@@ -120,26 +120,34 @@ AI_PROVIDER=openai ./src/cli/parse.js parse --limit 5 --concurrency 1 --delay 50
 
 ### 查询命令（query）
 
-查询Section的所有requirements：
+查询电子元器件的所有requirements：
 
 ```bash
 # 查看帮助
 ./src/cli/query.js --help
 
-# 查询特定Section（JSON格式）
+# 按产品名称搜索（推荐）- 大小写不敏感，支持部分匹配
+./src/cli/query.js "switchboard"
+./src/cli/query.js "motor control"
+./src/cli/query.js "busway"
+
+# 按 Section ID 搜索（精确查询）
 ./src/cli/query.js "26 24 13"
+./src/cli/query.js "26.24.13"  # 也支持点分隔
 
 # 查询并包含关联Section（文本格式）
-./src/cli/query.js "26 24 13" --recursive --format text
+./src/cli/query.js "switchboard" --recursive --format text
 
 # 查询特定数据库
-./src/cli/query.js "26 25 13" --db ./data.sqlite
+./src/cli/query.js "motor" --db ./data.sqlite
 ```
 
-**查询输出包含：**
-- 直接要求（该Section的所有requirements）
-- 关联Sections（通过section_relations）
-- 递归模式下包含所有关联Section的requirements
+**智能搜索模式：**
+- 自动检测输入格式：
+  - `"26 24 13"` 或 `"26.24.13"` → Section ID 搜索
+  - 其他任何文本 → 产品名称搜索
+- 产品名称搜索：大小写不敏感，支持部分匹配
+- 返回所有匹配的 sections 及其 requirements
 
 详细使用说明请参考：[AI解析系统实现文档](ai-implementation.md)
 

@@ -1,5 +1,47 @@
 # 更新日志
 
+## 2025-10-23 - 产品名称搜索功能
+
+### 新功能
+- **智能搜索模式**：query CLI 现在支持按产品名称搜索
+  - 自动识别输入格式（Section ID vs 产品名称）
+  - Section ID 格式：`"26 24 13"` 或 `"26.24.13"`
+  - 产品名称：任何其他文本（如 `"switchboard"`, `"motor control"`）
+  
+- **产品搜索 API**：
+  - `searchSectionsByProduct(db, keyword)` - 搜索匹配的 sections
+  - `getRequirementsByProduct(db, productName, recursive)` - 获取产品的所有 requirements
+  - 大小写不敏感，支持部分匹配（LIKE `%keyword%`）
+
+### 使用示例
+```bash
+# 按产品名称搜索（推荐）
+./src/cli/query.js "switchboard"
+./src/cli/query.js "motor control"
+
+# 仍然支持 Section ID
+./src/cli/query.js "26 24 13"
+
+# 递归查询关联 sections
+./src/cli/query.js "busway" --recursive --format text
+```
+
+### 实现细节
+- 利用现有 `sections.title` 字段，无需修改数据库结构
+- 正则检测 `^\d+[\s.]\d+[\s.]\d+$` 判断是否为 Section ID
+- 简单 LIKE 查询实现产品搜索（方案 A）
+
+### 文档更新
+- 更新 usage.md 和 ai-implementation.md 的查询示例
+- 在 dev-notes.md 添加未来优化计划（方案 B）
+  - 同义词与多语言支持
+  - FTS5 全文搜索
+  - AI 辅助搜索
+  - 搜索历史与智能建议
+
+### 后续优化
+详见 `docs/dev-notes.md` 的"高级搜索优化（方案 B）"章节
+
 ## 2025-10-22 - 添加速率限制支持
 
 ### 新功能

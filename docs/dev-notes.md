@@ -222,7 +222,10 @@
 - 切片：chunkSections 默认 maxChars=4000, minChars=1500（无重叠）；末尾过小切片会并入前一块；chunk.id 使用 sha1 截断。按章节/段落为主进行切分，**重要**：对于超长section（>maxChars），智能地在4级标题（X.Y.Z.W）边界处切分，确保不会把一个小节切成两段，保持小节完整性。如果没有4级标题，则退回到字符长度切分。
 - CLI：`src/cli/ingest.js` 将 parsePdf + buildSections + chunkSections 串联，输出 {meta,sections,chunks} 到 stdout；参数：--max, --pages, --db；环境变量通过 dotenv 自动加载（.env），数据库路径覆盖顺序：--db > SUNNY_SQLITE > :memory:。
 - AI处理：parse.js独立CLI，从chunks表读取Part 2/3，调用AI提取，写入4个requirements表；默认MockAI，可配置OpenAI/Anthropic；支持并发控制和错误重试。
-- 查询接口：query.js提供Section级查询，支持递归包含关联Section；输出格式JSON/text可选。
+- 查询接口：query.js 提供智能搜索，自动识别 Section ID 或产品名称；支持递归包含关联 Section；输出格式 JSON/text 可选。
+  - **产品搜索**（2025-10-23）：通过产品名称查询（如 "switchboard"），大小写不敏感，支持部分匹配
+  - searchSectionsByProduct(db, keyword) 在 sections.title 上进行 LIKE 搜索
+  - getRequirementsByProduct(db, productName, recursive) 返回所有匹配 sections 的 requirements
 - DB API：增加saveComplianceRequirements, saveTechnicalSpecs, saveDesignRequirements, saveTestingRequirements, getSectionRequirements, getAllSectionRequirementsRecursive, getUnprocessedChunks, updateAIProcessingStatus, getProcessingStats。
 - Schema：新增compliance_requirements, technical_specs, design_requirements, testing_requirements, ai_processing_status表；无外键约束，使用索引优化查询。
 
@@ -243,5 +246,83 @@
 - pdfjs 提取文本按 hasEOL 插入换行，否则空格；页面文本最后 trim。
 
 ## 后续计划
-- LLM 解析环节：对每个 chunk 提取结构化字段与引用回填（多轮）。
-- Web UI：上传、检索、SQL 生成与语义化展示。
+
+### 近期计划
+- ✅ LLM 解析环节：对每个 chunk 提取结构化字段与引用回填（已完成）
+- ✅ 产品名称搜索：支持通过产品名称查询 requirements（已完成）
+
+### Web UI（阶段三）
+- 上传 PDF 界面
+- 产品搜索与检索
+- 可视化展示 requirements
+- 导出和分享功能
+
+### 高级搜索优化（方案 B - TODO）
+
+当前产品搜索（方案 A）使用简单的 LIKE 查询，适用于英文标题的精确或部分匹配。
+未来可考虑以下增强：
+
+#### 1. 同义词与多语言支持
+```sql
+CREATE TABLE product_keywords (
+  section_id TEXT NOT NULL,
+  keyword TEXT NOT NULL,
+  keyword_type TEXT, -- 'synonym', 'translation', 'abbreviation'
+  language TEXT,     -- 'en', 'zh', 'ar' 等
+  PRIMARY KEY(section_id, keyword)
+);
+```
+
+示例数据：
+```
+26 24 13 | switchboard    | primary      | en
+26 24 13 | 配电柜         | translation  | zh
+26 24 13 | panel board    | synonym      | en
+26 24 13 | distribution board | synonym  | en
+```
+
+#### 2. SQLite FTS5 全文搜索
+```sql
+-- 创建虚拟全文搜索表
+CREATE VIRTUAL TABLE sections_fts USING fts5(
+  section_id UNINDEXED,
+  title,
+  keywords,
+  overview
+);
+
+-- 支持更强大的搜索语法
+SELECT * FROM sections_fts WHERE sections_fts MATCH 'switchboard OR "distribution panel"';
+```
+
+优势：
+- 支持布尔运算符（AND, OR, NOT）
+- 短语搜索（"exact phrase"）
+- 前缀搜索（switch*）
+- 相关性排序（BM25算法）
+
+#### 3. AI 辅助搜索映射
+使用 AI 将用户自然语言查询映射到产品类型：
+```
+用户输入："我需要一个400V的配电设备"
+AI 提取：product_type="配电柜/switchboard", voltage="400V"
+查询：sections WHERE title LIKE '%switchboard%' 
+      AND technical_specs WHERE parameter_name='voltage' AND value='400'
+```
+
+#### 4. 搜索历史与智能建议
+- 记录常见搜索词
+- 提供搜索建议（auto-complete）
+- 显示"相关搜索"
+
+#### 实施优先级
+1. **同义词表**（最简单，立即见效）
+2. **FTS5全文搜索**（中等难度，显著提升）
+3. **AI辅助搜索**（复杂，需要额外AI调用）
+4. **搜索优化**（Web UI阶段配合实施）
+
+#### 相关文件
+- `src/db/sqlite.js` - 数据库函数
+- `src/cli/query.js` - 查询 CLI
+- 新增：`src/db/search-schema.js` - 高级搜索 schema
+- 新增：`src/search/` - 搜索引擎模块

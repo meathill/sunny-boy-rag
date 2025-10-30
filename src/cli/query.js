@@ -1,8 +1,20 @@
 #!/usr/bin/env node
 import 'dotenv/config';
-import { initDb, getSectionRequirements, getAllSectionRequirementsRecursive } from '../db/sqlite.js';
+import { 
+  initDb, 
+  getSectionRequirements, 
+  getAllSectionRequirementsRecursive,
+  getRequirementsByProduct 
+} from '../db/sqlite.js';
 
 const DEFAULT_PATH = process.env.SUNNY_SQLITE || ':memory:';
+
+/**
+ * Check if input looks like a Section ID (format: "X Y Z" or "X.Y.Z")
+ */
+function isSectionId(input) {
+  return /^\d+[\s.]\d+[\s.]\d+$/.test(input.trim());
+}
 
 function formatRequirements(data, options = {}) {
   const { format = 'json', recursive = false } = options;
@@ -96,18 +108,52 @@ function formatRequirements(data, options = {}) {
   return JSON.stringify(data);
 }
 
+function formatProductSearchResults(results, options = {}) {
+  const { format = 'json' } = options;
+
+  if (format === 'json') {
+    return JSON.stringify(results, null, 2);
+  }
+
+  if (format === 'text') {
+    let output = `\n=== Search Results for "${results.query}" ===\n`;
+    
+    if (results.matchedSections.length === 0) {
+      output += '\nNo matching products/sections found.\n';
+      return output;
+    }
+
+    output += `\nFound ${results.matchedSections.length} matching section(s):\n`;
+    results.matchedSections.forEach(s => {
+      output += `  - ${s.id}: ${s.title}\n`;
+    });
+
+    results.results.forEach(result => {
+      output += `\n${'='.repeat(60)}\n`;
+      output += formatRequirements(result.requirements, options);
+    });
+
+    return output;
+  }
+
+  return JSON.stringify(results);
+}
+
 async function main() {
   const args = process.argv.slice(2);
   
   if (args.length === 0 || args.includes('--help')) {
     console.log(`
-Query Requirements - Search and retrieve requirements from database
+Query Requirements - Search requirements by Section ID or Product Name
 
 Usage:
-  query <section_id> [options]
+  query <search_term> [options]
 
 Arguments:
-  section_id         Section code (e.g., "26 24 13", "26 25 13")
+  search_term        Section ID (e.g., "26 24 13") or Product name (e.g., "switchboard")
+                     The tool automatically detects the format:
+                     - Pattern "X Y Z" or "X.Y.Z" → Section ID search
+                     - Any other text → Product name search
 
 Options:
   --recursive        Include requirements from related sections
@@ -116,19 +162,23 @@ Options:
   --help             Show this help
 
 Examples:
-  # Get requirements for section "26 24 13"
+  # Search by Section ID
   ./src/cli/query.js "26 24 13"
   
+  # Search by product name (case-insensitive, partial match)
+  ./src/cli/query.js "switchboard"
+  ./src/cli/query.js "motor control"
+  
   # Get requirements with related sections in text format
-  ./src/cli/query.js "26 24 13" --recursive --format text
+  ./src/cli/query.js "switchboard" --recursive --format text
   
   # Query specific database
-  ./src/cli/query.js "26 25 13" --db ./data.sqlite
+  ./src/cli/query.js "busway" --db ./data.sqlite
 `);
     process.exit(0);
   }
 
-  const sectionId = args[0];
+  const searchTerm = args[0];
   const options = {
     recursive: args.includes('--recursive'),
     format: 'json',
@@ -143,11 +193,29 @@ Examples:
   const db = initDb(options.dbPath);
   
   try {
-    const data = options.recursive
-      ? getAllSectionRequirementsRecursive(db, sectionId)
-      : getSectionRequirements(db, sectionId);
+    let output;
+
+    if (isSectionId(searchTerm)) {
+      // Search by Section ID
+      const sectionId = searchTerm.replace(/\./g, ' '); // Normalize "26.24.13" to "26 24 13"
+      const data = options.recursive
+        ? getAllSectionRequirementsRecursive(db, sectionId)
+        : getSectionRequirements(db, sectionId);
+      
+      output = formatRequirements(data, options);
+    } else {
+      // Search by product name
+      const results = getRequirementsByProduct(db, searchTerm, options.recursive);
+      
+      if (results.matchedSections.length === 0) {
+        console.error(`No sections found matching "${searchTerm}"`);
+        console.error('Try a different search term or use Section ID (e.g., "26 24 13")');
+        process.exit(1);
+      }
+
+      output = formatProductSearchResults(results, options);
+    }
     
-    const output = formatRequirements(data, options);
     console.log(output);
   } catch (error) {
     console.error('Error querying requirements:', error.message);

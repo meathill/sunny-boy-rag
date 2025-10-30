@@ -474,3 +474,68 @@ export function getAllSectionRequirementsRecursive(db, sectionId, visited = new 
 
   return result;
 }
+
+/**
+ * Search sections by product name/keyword
+ * Case-insensitive partial matching on section title
+ * @param {Database} db - SQLite database instance
+ * @param {string} keyword - Product name or keyword to search
+ * @returns {Array} - Matching sections with id and title
+ */
+export function searchSectionsByProduct(db, keyword) {
+  if (!keyword || keyword.trim() === '') {
+    return [];
+  }
+
+  // Case-insensitive LIKE search
+  const sections = db.prepare(`
+    SELECT id, title, start_page, end_page, overview
+    FROM sections
+    WHERE title LIKE ?
+    ORDER BY id
+  `).all(`%${keyword}%`);
+
+  return sections;
+}
+
+/**
+ * Get requirements for a product by name
+ * Searches sections by product name and returns all requirements
+ * @param {Database} db - SQLite database instance
+ * @param {string} productName - Product name or keyword
+ * @param {boolean} recursive - Include related sections (default: false)
+ * @returns {Object} - Search results with matched sections and their requirements
+ */
+export function getRequirementsByProduct(db, productName, recursive = false) {
+  const matchedSections = searchSectionsByProduct(db, productName);
+
+  if (matchedSections.length === 0) {
+    return {
+      query: productName,
+      matchedSections: [],
+      results: [],
+    };
+  }
+
+  const results = matchedSections.map(section => {
+    const requirements = recursive
+      ? getAllSectionRequirementsRecursive(db, section.id)
+      : getSectionRequirements(db, section.id);
+
+    return {
+      section: {
+        id: section.id,
+        title: section.title,
+        startPage: section.start_page,
+        endPage: section.end_page,
+      },
+      requirements,
+    };
+  });
+
+  return {
+    query: productName,
+    matchedSections: matchedSections.map(s => ({ id: s.id, title: s.title })),
+    results,
+  };
+}

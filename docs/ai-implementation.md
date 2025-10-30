@@ -101,21 +101,30 @@ AI_PROVIDER=openai ./src/cli/parse.js parse --limit 5 --concurrency 1 --delay 50
 
 #### 2. 查询命令 (`query.js`)
 
-查询Section的所有要求：
+查询电子元器件的所有要求：
 
 ```bash
 # 查看帮助
 ./src/cli/query.js --help
 
-# 查询特定Section（JSON格式）
+# 按产品名称搜索（推荐）
+./src/cli/query.js "switchboard"
+./src/cli/query.js "motor control"
+
+# 按 Section ID 搜索
 ./src/cli/query.js "26 24 13"
 
 # 查询并包含关联Section（文本格式）
-./src/cli/query.js "26 24 13" --recursive --format text
+./src/cli/query.js "switchboard" --recursive --format text
 
 # 查询特定数据库
-./src/cli/query.js "26 25 13" --db ./data.sqlite
+./src/cli/query.js "motor" --db ./data.sqlite
 ```
+
+**智能搜索：**
+- 自动识别 Section ID（"X Y Z"格式）或产品名称
+- 产品搜索：大小写不敏感，部分匹配
+- 支持递归查询关联 sections
 
 ### 编程接口
 
