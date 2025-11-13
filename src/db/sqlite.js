@@ -80,6 +80,31 @@ export function initDb(path = DEFAULT_PATH) {
       definition_id TEXT NOT NULL,
       PRIMARY KEY(section_id, definition_id)
     );
+
+    -- Advanced search: product keywords table
+    CREATE TABLE IF NOT EXISTS product_keywords (
+      section_id TEXT NOT NULL,
+      keyword TEXT NOT NULL,
+      keyword_type TEXT NOT NULL,  -- 'primary', 'synonym', 'translation', 'abbreviation'
+      language TEXT NOT NULL,       -- 'en', 'zh', 'ar', etc.
+      created_at TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY(section_id, keyword)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_product_keywords_keyword 
+      ON product_keywords(keyword);
+    
+    CREATE INDEX IF NOT EXISTS idx_product_keywords_section 
+      ON product_keywords(section_id);
+
+    -- FTS5 full-text search table
+    CREATE VIRTUAL TABLE IF NOT EXISTS sections_fts USING fts5(
+      section_id UNINDEXED,
+      title,
+      overview,
+      keywords,
+      tokenize='unicode61'
+    );
   `);
   
   // Create AI-related tables
@@ -501,13 +526,15 @@ export function searchSectionsByProduct(db, keyword) {
 /**
  * Get requirements for a product by name
  * Searches sections by product name and returns all requirements
+ * Uses synonym search (searchSectionsWithSynonyms) for better matching
  * @param {Database} db - SQLite database instance
  * @param {string} productName - Product name or keyword
  * @param {boolean} recursive - Include related sections (default: false)
  * @returns {Object} - Search results with matched sections and their requirements
  */
 export function getRequirementsByProduct(db, productName, recursive = false) {
-  const matchedSections = searchSectionsByProduct(db, productName);
+  // Use synonym search for better matching
+  const matchedSections = searchSectionsWithSynonyms(db, productName);
 
   if (matchedSections.length === 0) {
     return {
@@ -539,3 +566,273 @@ export function getRequirementsByProduct(db, productName, recursive = false) {
     results,
   };
 }
+
+/**
+ * Advanced Search Functions (with synonym support)
+ */
+
+/**
+ * Insert product keywords
+ * @param {Database} db - SQLite database instance
+ * @param {Array} keywords - Array of {sectionId, keyword, type, language}
+ */
+export function insertProductKeywords(db, keywords) {
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO product_keywords (section_id, keyword, keyword_type, language)
+    VALUES (@sectionId, @keyword, @type, @language)
+  `);
+
+  const tx = db.transaction((items) => {
+    for (const item of items) {
+      stmt.run({
+        sectionId: item.sectionId,
+        keyword: item.keyword.toLowerCase(), // 小写存储
+        type: item.type,
+        language: item.language,
+      });
+    }
+  });
+
+  tx(keywords);
+}
+
+/**
+ * Search sections with synonym support
+ * Searches product_keywords table first, falls back to title search
+ * @param {Database} db - SQLite database instance
+ * @param {string} keyword - Search keyword
+ * @returns {Array} - Matching sections
+ */
+export function searchSectionsWithSynonyms(db, keyword) {
+  if (!keyword || keyword.trim() === '') {
+    return [];
+  }
+
+  const normalizedKeyword = keyword.toLowerCase().trim();
+
+  // 1. Search in product_keywords table
+  const matchedSectionIds = db.prepare(`
+    SELECT DISTINCT section_id 
+    FROM product_keywords 
+    WHERE keyword LIKE ?
+  `).all(`%${normalizedKeyword}%`).map(r => r.section_id);
+
+  // 2. If found in keywords, return those sections
+  if (matchedSectionIds.length > 0) {
+    const placeholders = matchedSectionIds.map(() => '?').join(',');
+    return db.prepare(`
+      SELECT id, title, start_page, end_page, overview
+      FROM sections
+      WHERE id IN (${placeholders})
+      ORDER BY id
+    `).all(...matchedSectionIds);
+  }
+
+  // 3. Fallback to title search (case-insensitive)
+  return db.prepare(`
+    SELECT id, title, start_page, end_page, overview
+    FROM sections
+    WHERE title LIKE ?
+    ORDER BY id
+  `).all(`%${keyword}%`);
+}
+
+/**
+ * Get all keywords for a section
+ * @param {Database} db - SQLite database instance
+ * @param {string} sectionId - Section ID
+ * @returns {Array} - Keywords
+ */
+export function getKeywordsForSection(db, sectionId) {
+  return db.prepare(`
+    SELECT keyword, keyword_type, language
+    FROM product_keywords
+    WHERE section_id = ?
+    ORDER BY 
+      CASE keyword_type
+        WHEN 'primary' THEN 1
+        WHEN 'synonym' THEN 2
+        WHEN 'translation' THEN 3
+        WHEN 'abbreviation' THEN 4
+        ELSE 5
+      END,
+      keyword
+  `).all(sectionId);
+}
+
+/**
+ * Load keyword seeds from SQL file
+ * @param {Database} db - SQLite database instance
+ * @param {string} sqlContent - SQL content to execute
+ */
+export function loadKeywordSeeds(db, sqlContent) {
+  db.exec(sqlContent);
+}
+
+/**
+ * Sync FTS5 table with sections and keywords
+ * @param {Database} db - SQLite database instance
+ */
+export function syncFTSTable(db) {
+  // Clear existing FTS data
+  db.exec('DELETE FROM sections_fts');
+  
+  // Insert/update FTS data
+  const stmt = db.prepare(`
+    INSERT INTO sections_fts (section_id, title, overview, keywords)
+    SELECT 
+      s.id,
+      s.title,
+      s.overview,
+      COALESCE(
+        (SELECT GROUP_CONCAT(pk.keyword, ' ')
+         FROM product_keywords pk
+         WHERE pk.section_id = s.id),
+        ''
+      )
+    FROM sections s
+    WHERE s.title IS NOT NULL
+  `);
+  
+  stmt.run();
+}
+
+/**
+ * Full-text search using FTS5
+ * Supports Boolean operators (AND, OR), phrase search ("..."), prefix (*)
+ * @param {Database} db - SQLite database instance
+ * @param {string} query - FTS5 query string
+ * @param {Object} options - Search options
+ * @param {number} options.limit - Max results (default: 10)
+ * @returns {Array} - Matching sections with relevance score
+ */
+export function searchSectionsFullText(db, query, options = {}) {
+  const { limit = 10 } = options;
+  
+  if (!query || query.trim() === '') {
+    return [];
+  }
+
+  try {
+    // FTS5 search with relevance ranking
+    const ftsResults = db.prepare(`
+      SELECT 
+        section_id,
+        bm25(sections_fts) as relevance,
+        snippet(sections_fts, 1, '<mark>', '</mark>', '...', 20) as title_snippet,
+        snippet(sections_fts, 2, '<mark>', '</mark>', '...', 40) as overview_snippet
+      FROM sections_fts
+      WHERE sections_fts MATCH ?
+      ORDER BY bm25(sections_fts)
+      LIMIT ?
+    `).all(query, limit);
+
+    if (ftsResults.length === 0) {
+      return [];
+    }
+
+    // Get full section info
+    const sectionIds = ftsResults.map(r => r.section_id);
+    const placeholders = sectionIds.map(() => '?').join(',');
+    
+    const sections = db.prepare(`
+      SELECT id, title, start_page, end_page, overview
+      FROM sections
+      WHERE id IN (${placeholders})
+    `).all(...sectionIds);
+
+    // Merge with FTS results
+    return sections.map(s => {
+      const fts = ftsResults.find(r => r.section_id === s.id);
+      return {
+        ...s,
+        relevance: fts?.relevance || 0,
+        title_snippet: fts?.title_snippet,
+        overview_snippet: fts?.overview_snippet,
+      };
+    }).sort((a, b) => a.relevance - b.relevance); // Lower BM25 score = higher relevance
+  } catch (error) {
+    // FTS5 query syntax error - return empty
+    console.error('FTS5 query error:', error.message);
+    return [];
+  }
+}
+
+/**
+ * Smart search - automatically selects best search strategy
+ * @param {Database} db - SQLite database instance  
+ * @param {string} query - Search query
+ * @param {Object} options - Search options
+ * @param {boolean} options.useFTS - Use FTS5 (default: true)
+ * @param {boolean} options.useSynonyms - Use synonyms (default: true)
+ * @param {number} options.limit - Max results (default: 10)
+ * @returns {Object} - {results: Array, strategy: string}
+ */
+export function smartSearch(db, query, options = {}) {
+  const {
+    useFTS = true,
+    useSynonyms = true,
+    limit = 10,
+  } = options;
+
+  if (!query || query.trim() === '') {
+    return { results: [], strategy: 'empty' };
+  }
+
+  // 1. Check if it's a Section ID
+  if (/^\d+[\s.]\d+[\s.]\d+$/.test(query.trim())) {
+    const sectionId = query.replace(/\./g, ' ');
+    const section = db.prepare(`
+      SELECT id, title, start_page, end_page, overview
+      FROM sections
+      WHERE id = ?
+    `).get(sectionId);
+    
+    return {
+      results: section ? [section] : [],
+      strategy: 'section_id',
+    };
+  }
+
+  // 2. Check for FTS5 syntax (AND, OR, ", *)
+  const hasFTSSyntax = /\b(AND|OR|NOT)\b|["*]/.test(query);
+  
+  if (useFTS && hasFTSSyntax) {
+    const results = searchSectionsFullText(db, query, { limit });
+    if (results.length > 0) {
+      return { results, strategy: 'fts5' };
+    }
+  }
+
+  // 3. Try synonym search first
+  if (useSynonyms) {
+    const results = searchSectionsWithSynonyms(db, query);
+    if (results.length > 0) {
+      return { results: results.slice(0, limit), strategy: 'synonym' };
+    }
+  }
+
+  // 4. Fallback to FTS5 simple search
+  if (useFTS) {
+    const results = searchSectionsFullText(db, query, { limit });
+    if (results.length > 0) {
+      return { results, strategy: 'fts5_fallback' };
+    }
+  }
+
+  // 5. Last resort: basic title search
+  const results = db.prepare(`
+    SELECT id, title, start_page, end_page, overview
+    FROM sections
+    WHERE title LIKE ?
+    ORDER BY id
+    LIMIT ?
+  `).all(`%${query}%`, limit);
+
+  return {
+    results,
+    strategy: 'basic',
+  };
+}
+
+

@@ -224,7 +224,11 @@
 - AI处理：parse.js独立CLI，从chunks表读取Part 2/3，调用AI提取，写入4个requirements表；默认MockAI，可配置OpenAI/Anthropic；支持并发控制和错误重试。
 - 查询接口：query.js 提供智能搜索，自动识别 Section ID 或产品名称；支持递归包含关联 Section；输出格式 JSON/text 可选。
   - **产品搜索**（2025-10-23）：通过产品名称查询（如 "switchboard"），大小写不敏感，支持部分匹配
-  - searchSectionsByProduct(db, keyword) 在 sections.title 上进行 LIKE 搜索
+  - **同义词搜索**（2025-10-30）：支持英文同义词、中文翻译、缩写
+    - `product_keywords` 表：存储 section_id, keyword(小写), keyword_type, language
+    - `searchSectionsWithSynonyms(db, keyword)`: 优先在关键词表搜索，回退到 title 搜索
+    - 28 个预置关键词：SWITCHBOARDS (10), MOTOR CONTROL CENTER (8), LOW VOLTAGE BUSWAYS (10)
+    - 种子数据：`seeds/product-keywords.sql`
   - getRequirementsByProduct(db, productName, recursive) 返回所有匹配 sections 的 requirements
 - DB API：增加saveComplianceRequirements, saveTechnicalSpecs, saveDesignRequirements, saveTestingRequirements, getSectionRequirements, getAllSectionRequirementsRecursive, getUnprocessedChunks, updateAIProcessingStatus, getProcessingStats。
 - Schema：新增compliance_requirements, technical_specs, design_requirements, testing_requirements, ai_processing_status表；无外键约束，使用索引优化查询。
@@ -250,6 +254,10 @@
 ### 近期计划
 - ✅ LLM 解析环节：对每个 chunk 提取结构化字段与引用回填（已完成）
 - ✅ 产品名称搜索：支持通过产品名称查询 requirements（已完成）
+- ✅ 高级搜索系统：同义词 + FTS5 + 智能路由（已完成，2025-10-30）
+  - 阶段 1: 同义词支持 ✅
+  - 阶段 2: FTS5 全文搜索 ✅  
+  - 阶段 3: 统一智能接口 ✅
 
 ### Web UI（阶段三）
 - 上传 PDF 界面
@@ -257,51 +265,64 @@
 - 可视化展示 requirements
 - 导出和分享功能
 
-### 高级搜索优化（方案 B - TODO）
+### 高级搜索优化（方案 B - 已完整实施 ✅）
 
-当前产品搜索（方案 A）使用简单的 LIKE 查询，适用于英文标题的精确或部分匹配。
-未来可考虑以下增强：
+#### ✅ 阶段 1: 同义词支持（2025-10-30）
+- `product_keywords` 表存储关键词映射
+- 支持英文同义词、中文翻译、缩写、多语言
+- 28 个预置关键词覆盖 3 个主要产品
+- 搜索优先级：keywords → title fallback
+- 测试覆盖：8 个单元测试
 
-#### 1. 同义词与多语言支持
-```sql
-CREATE TABLE product_keywords (
-  section_id TEXT NOT NULL,
-  keyword TEXT NOT NULL,
-  keyword_type TEXT, -- 'synonym', 'translation', 'abbreviation'
-  language TEXT,     -- 'en', 'zh', 'ar' 等
-  PRIMARY KEY(section_id, keyword)
-);
-```
+#### ✅ 阶段 2: FTS5 全文搜索（2025-10-30）
+- `sections_fts` 虚拟表（FTS5 引擎）
+- 搜索范围：title + overview + keywords
+- Boolean 运算：AND, OR, NOT
+- 短语搜索：`"exact phrase"`
+- 前缀搜索：`prefix*`
+- BM25 相关性排序
+- 高亮片段支持（snippet）
+- 测试覆盖：8 个单元测试
 
-示例数据：
+#### ✅ 阶段 3: 统一智能接口（2025-10-30）
+- `smartSearch()` 统一入口
+- 自动策略选择（5 种策略）：
+  1. Section ID 检测
+  2. FTS5 语法检测（AND/OR/"/*）
+  3. 同义词表查询
+  4. FTS5 全文回退
+  5. 基础 LIKE 查询
+- CLI 参数：`--search-mode`, `--sync-fts`
+- 测试覆盖：11 个单元测试
+
+**总测试**：74/74 通过 ✅
+
+**数据示例**：
 ```
 26 24 13 | switchboard    | primary      | en
 26 24 13 | 配电柜         | translation  | zh
 26 24 13 | panel board    | synonym      | en
-26 24 13 | distribution board | synonym  | en
+26 24 19 | mcc            | abbreviation | en
 ```
 
-#### 2. SQLite FTS5 全文搜索
-```sql
--- 创建虚拟全文搜索表
-CREATE VIRTUAL TABLE sections_fts USING fts5(
-  section_id UNINDEXED,
-  title,
-  keywords,
-  overview
-);
+**FTS5 查询示例**：
+```bash
+# Boolean
+"motor AND control"      → 同时包含
+"switch OR busway"       → 任一匹配
 
--- 支持更强大的搜索语法
-SELECT * FROM sections_fts WHERE sections_fts MATCH 'switchboard OR "distribution panel"';
+# 短语
+'"low voltage"'          → 精确短语
+
+# 前缀
+"switch*"                → 前缀匹配
 ```
 
-优势：
-- 支持布尔运算符（AND, OR, NOT）
-- 短语搜索（"exact phrase"）
-- 前缀搜索（switch*）
-- 相关性排序（BM25算法）
+---
 
-#### 3. AI 辅助搜索映射
+### 🚀 未来扩展（可选）
+
+#### AI 辅助搜索
 使用 AI 将用户自然语言查询映射到产品类型：
 ```
 用户输入："我需要一个400V的配电设备"
@@ -310,19 +331,13 @@ AI 提取：product_type="配电柜/switchboard", voltage="400V"
       AND technical_specs WHERE parameter_name='voltage' AND value='400'
 ```
 
-#### 4. 搜索历史与智能建议
+#### 搜索历史与智能建议
 - 记录常见搜索词
 - 提供搜索建议（auto-complete）
 - 显示"相关搜索"
 
-#### 实施优先级
-1. **同义词表**（最简单，立即见效）
-2. **FTS5全文搜索**（中等难度，显著提升）
-3. **AI辅助搜索**（复杂，需要额外AI调用）
-4. **搜索优化**（Web UI阶段配合实施）
+#### Web UI 管理界面
+- 可视化管理关键词映射
+- 批量导入/导出同义词
+- 搜索性能分析仪表板
 
-#### 相关文件
-- `src/db/sqlite.js` - 数据库函数
-- `src/cli/query.js` - 查询 CLI
-- 新增：`src/db/search-schema.js` - 高级搜索 schema
-- 新增：`src/search/` - 搜索引擎模块

@@ -4,7 +4,10 @@ import {
   initDb, 
   getSectionRequirements, 
   getAllSectionRequirementsRecursive,
-  getRequirementsByProduct 
+  getRequirementsByProduct,
+  searchSectionsWithSynonyms,
+  smartSearch,
+  syncFTSTable
 } from '../db/sqlite.js';
 
 const DEFAULT_PATH = process.env.SUNNY_SQLITE || ':memory:';
@@ -144,30 +147,53 @@ async function main() {
   
   if (args.length === 0 || args.includes('--help')) {
     console.log(`
-Query Requirements - Search requirements by Section ID or Product Name
+Query Requirements - Advanced search with synonyms and full-text search
 
 Usage:
   query <search_term> [options]
 
 Arguments:
-  search_term        Section ID (e.g., "26 24 13") or Product name (e.g., "switchboard")
-                     The tool automatically detects the format:
-                     - Pattern "X Y Z" or "X.Y.Z" → Section ID search
-                     - Any other text → Product name search
+  search_term        Search query:
+                     - Section ID: "26 24 13" or "26.24.13"
+                     - Product name: "switchboard", "配电柜", "MCC"
+                     - FTS5 query: "motor AND control", "switch*", "panel OR board"
+
+Search Modes (automatic):
+  1. Section ID      - Direct lookup by section code
+  2. Synonym Search  - Matches keywords (synonyms, translations, abbreviations)
+  3. FTS5 Full-text  - Boolean operators (AND, OR, NOT), phrase ("..."), prefix (*)
+  4. Basic Search    - Fallback to title LIKE search
 
 Options:
   --recursive        Include requirements from related sections
   --format FORMAT    Output format: json, text (default: json)
+  --search-mode MODE Force search mode: synonym, fts, basic, auto (default: auto)
   --db PATH          Database file path (default: $SUNNY_SQLITE)
+  --sync-fts         Sync FTS5 table before search
   --help             Show this help
 
 Examples:
-  # Search by Section ID
+  # Section ID
   ./src/cli/query.js "26 24 13"
   
-  # Search by product name (case-insensitive, partial match)
-  ./src/cli/query.js "switchboard"
-  ./src/cli/query.js "motor control"
+  # Synonym search (English, Chinese, abbreviations)
+  ./src/cli/query.js "panel board"
+  ./src/cli/query.js "配电柜"
+  ./src/cli/query.js "MCC"
+  
+  # FTS5 Boolean search
+  ./src/cli/query.js "motor AND control"
+  ./src/cli/query.js "switchboard OR busway"
+  ./src/cli/query.js '"low voltage"'
+  
+  # Prefix search
+  ./src/cli/query.js "switch*"
+  
+  # Force specific search mode
+  ./src/cli/query.js "switchboard" --search-mode fts
+  
+  # Sync FTS table and search
+  ./src/cli/query.js "voltage" --sync-fts
   
   # Get requirements with related sections in text format
   ./src/cli/query.js "switchboard" --recursive --format text
@@ -181,44 +207,126 @@ Examples:
   const searchTerm = args[0];
   const options = {
     recursive: args.includes('--recursive'),
+    syncFTS: args.includes('--sync-fts'),
     format: 'json',
+    searchMode: 'auto',
     dbPath: DEFAULT_PATH,
   };
 
   for (let i = 1; i < args.length; i++) {
     if (args[i] === '--format') options.format = args[++i];
     else if (args[i] === '--db') options.dbPath = args[++i];
+    else if (args[i] === '--search-mode') options.searchMode = args[++i];
   }
 
   const db = initDb(options.dbPath);
   
+  // Sync FTS table if requested
+  if (options.syncFTS) {
+    console.error('Syncing FTS table...');
+    syncFTSTable(db);
+    console.error('✓ FTS table synced\n');
+  }
+  
   try {
     let output;
+    let searchResults;
 
-    if (isSectionId(searchTerm)) {
-      // Search by Section ID
-      const sectionId = searchTerm.replace(/\./g, ' '); // Normalize "26.24.13" to "26 24 13"
+    // Use smart search based on mode
+    if (options.searchMode === 'auto') {
+      // Automatic mode - smartSearch decides
+      searchResults = smartSearch(db, searchTerm, {
+        useFTS: true,
+        useSynonyms: true,
+        limit: 50,
+      });
+      
+      if (options.format === 'json') {
+        // Add strategy info in JSON mode
+        console.error(`Search strategy: ${searchResults.strategy}`);
+      }
+    } else if (options.searchMode === 'synonym') {
+      // Force synonym search
+      searchResults = {
+        results: searchSectionsWithSynonyms(db, searchTerm),
+        strategy: 'synonym_forced',
+      };
+    } else if (options.searchMode === 'fts') {
+      // Force FTS5 search
+      const { searchSectionsFullText } = await import('../db/sqlite.js');
+      searchResults = {
+        results: searchSectionsFullText(db, searchTerm, { limit: 50 }),
+        strategy: 'fts5_forced',
+      };
+    } else if (options.searchMode === 'basic') {
+      // Force basic search
+      searchResults = {
+        results: db.prepare(`
+          SELECT id, title, start_page, end_page, overview
+          FROM sections
+          WHERE title LIKE ?
+          ORDER BY id
+        `).all(`%${searchTerm}%`),
+        strategy: 'basic_forced',
+      };
+    }
+
+    // Handle results
+    if (!searchResults || searchResults.results.length === 0) {
+      console.error(`No sections found matching "${searchTerm}"`);
+      console.error('Try a different search term or use Section ID (e.g., "26 24 13")');
+      process.exit(1);
+    }
+
+    // If Section ID was detected, get full requirements
+    if (searchResults.strategy === 'section_id') {
+      const sectionId = searchResults.results[0].id;
       const data = options.recursive
         ? getAllSectionRequirementsRecursive(db, sectionId)
         : getSectionRequirements(db, sectionId);
       
       output = formatRequirements(data, options);
     } else {
-      // Search by product name
-      const results = getRequirementsByProduct(db, searchTerm, options.recursive);
+      // For other searches, format as product search results
+      const matchedSections = searchResults.results;
       
-      if (results.matchedSections.length === 0) {
-        console.error(`No sections found matching "${searchTerm}"`);
-        console.error('Try a different search term or use Section ID (e.g., "26 24 13")');
-        process.exit(1);
-      }
+      const fullResults = {
+        query: searchTerm,
+        strategy: searchResults.strategy,
+        matchedSections: matchedSections.map(s => ({ 
+          id: s.id, 
+          title: s.title,
+          relevance: s.relevance,
+        })),
+        results: matchedSections.map(section => {
+          const requirements = options.recursive
+            ? getAllSectionRequirementsRecursive(db, section.id)
+            : getSectionRequirements(db, section.id);
 
-      output = formatProductSearchResults(results, options);
+          return {
+            section: {
+              id: section.id,
+              title: section.title,
+              startPage: section.start_page,
+              endPage: section.end_page,
+              relevance: section.relevance,
+              title_snippet: section.title_snippet,
+              overview_snippet: section.overview_snippet,
+            },
+            requirements,
+          };
+        }),
+      };
+
+      output = formatProductSearchResults(fullResults, options);
     }
     
     console.log(output);
   } catch (error) {
     console.error('Error querying requirements:', error.message);
+    if (process.env.DEBUG) {
+      console.error(error.stack);
+    }
     process.exit(1);
   } finally {
     db.close();

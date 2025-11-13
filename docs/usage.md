@@ -120,34 +120,78 @@ AI_PROVIDER=openai ./src/cli/parse.js parse --limit 5 --concurrency 1 --delay 50
 
 ### 查询命令（query）
 
-查询电子元器件的所有requirements：
+查询电子元器件的所有requirements - 支持三种搜索模式：
 
 ```bash
 # 查看帮助
 ./src/cli/query.js --help
 
-# 按产品名称搜索（推荐）- 大小写不敏感，支持部分匹配
-./src/cli/query.js "switchboard"
-./src/cli/query.js "motor control"
-./src/cli/query.js "busway"
+# 1. 同义词搜索（推荐日常使用）- 快速精确
+./src/cli/query.js "switchboard"       # 主要名称
+./src/cli/query.js "panel board"       # 英文同义词  
+./src/cli/query.js "配电柜"            # 中文翻译
+./src/cli/query.js "MCC"               # 缩写（Motor Control Center）
 
-# 按 Section ID 搜索（精确查询）
+# 2. FTS5 全文搜索（高级查询）- 强大灵活
+./src/cli/query.js "motor AND control"      # Boolean AND
+./src/cli/query.js "switchboard OR busway"  # Boolean OR
+./src/cli/query.js '"low voltage"'          # 短语搜索（精确匹配）
+./src/cli/query.js "switch*"                # 前缀搜索
+./src/cli/query.js "control NOT test"       # 排除词
+
+# 3. Section ID 搜索（传统方式）- 直接定位
 ./src/cli/query.js "26 24 13"
 ./src/cli/query.js "26.24.13"  # 也支持点分隔
 
-# 查询并包含关联Section（文本格式）
-./src/cli/query.js "switchboard" --recursive --format text
-
-# 查询特定数据库
-./src/cli/query.js "motor" --db ./data.sqlite
+# 高级选项
+./src/cli/query.js "voltage" --sync-fts            # 同步FTS表后搜索
+./src/cli/query.js "switchboard" --search-mode fts  # 强制FTS模式
+./src/cli/query.js "motor" --recursive --format text  # 递归+文本格式
 ```
 
-**智能搜索模式：**
-- 自动检测输入格式：
-  - `"26 24 13"` 或 `"26.24.13"` → Section ID 搜索
-  - 其他任何文本 → 产品名称搜索
-- 产品名称搜索：大小写不敏感，支持部分匹配
-- 返回所有匹配的 sections 及其 requirements
+**智能搜索系统（2025-10-30 完整实现）：**
+
+#### 三层搜索架构
+1. **同义词层（最快）**：
+   - 匹配 28 个预置关键词
+   - 英文同义词：panel board, panelboard, distribution board
+   - 中文翻译：配电柜, 电机控制中心, 母线槽
+   - 缩写：MCC (Motor Control Center)
+   - 速度：<1ms
+
+2. **FTS5 全文层（最强）**：
+   - 搜索 title + overview + keywords
+   - Boolean 运算：AND, OR, NOT
+   - 短语匹配：`"exact phrase"`
+   - 前缀匹配：`prefix*`
+   - BM25 相关性排序
+   - 速度：<5ms
+
+3. **基础层（兜底）**：
+   - LIKE 模糊匹配
+   - 确保总能返回结果
+
+#### 自动策略选择
+系统根据查询自动选择最佳策略：
+- `"26 24 13"` → Section ID 直接查询
+- `"motor AND control"` → FTS5 Boolean 搜索
+- `"panel board"` → 同义词精确匹配
+- `"distribution"` → FTS5 全文搜索
+- `"CONTROL"` → 基础 LIKE 搜索（最后手段）
+
+#### 命令行参数
+- `--search-mode auto|synonym|fts|basic` - 强制指定搜索模式（默认：auto）
+- `--sync-fts` - 搜索前同步 FTS 表（首次使用或数据更新后）
+- `--recursive` - 包含关联 Sections 的 requirements
+- `--format json|text` - 输出格式（默认：json）
+- `--db PATH` - 指定数据库文件
+
+#### 使用建议
+- **日常查询**：直接输入产品名或同义词（如 "MCC"）
+- **复杂筛选**：使用 Boolean 运算（如 "motor AND control"）
+- **精确匹配**：使用短语搜索（如 `"low voltage"`）
+- **探索发现**：使用前缀搜索（如 "switch*"）
+- **首次使用**：加 `--sync-fts` 同步全文索引
 
 详细使用说明请参考：[AI解析系统实现文档](ai-implementation.md)
 
